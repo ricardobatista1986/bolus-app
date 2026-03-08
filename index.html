@@ -1459,6 +1459,11 @@ function GlucoseChart({glucoseData, history, activeDoses, onRowsUpdate}) {
   hoursRef.current  = hours;
   historyRef.current = history||[];
 
+  // Força redraw do chart quando showMarkers muda — sem isso o canvas não atualiza
+  useEffect(()=>{
+    if(chartRef.current) chartRef.current.update();
+  },[showMarkers]);
+
   const targetZonePlugin = {
     id:"tz",
     beforeDraw(chart){
