@@ -546,6 +546,14 @@ const sbDeleteLibraryItem = async id => {
     });
   } catch(e) { /* silencioso */ }
 };
+const sbDeleteMeal = async id => {
+  try {
+    await fetch(`${SUPABASE_URL}/rest/v1/meal_records?id=eq.${id}`, {
+      method: "DELETE",
+      headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` },
+    });
+  } catch(e) { /* silencioso */ }
+};
 const renderMD = text => {
   if(!text) return "";
   let out = text
@@ -593,6 +601,17 @@ const extractCarbs = text => {
 /* ── EXTRACT DOSE — 6 patterns ─────────────────────────────────────────── */
 const extractDose = text => {
   if(!text) return null;
+  // Padrões de dose zero — IA indicando não aplicar (hipo, COB suficiente, etc)
+  const zeroPatterns = [
+    /dose\s+sugerida[^0-9]{0,15}0\s*[Uu]\b/i,
+    /arredondado[^0-9]{0,10}0\s*[Uu]\b/i,
+    /\*\*0\s*[Uu]\b/,
+    /não\s+(?:aplicar|usar|injetar)\s+insulina/i,
+    /sem\s+(?:necessidade\s+de\s+)?(?:dose|insulina)/i,
+    /glicemia\s+baixa[^.]{0,60}(?:não|sem)\s+(?:dose|insulina)/i,
+  ];
+  for(const p of zeroPatterns){ if(p.test(text)) return 0; }
+  // Padrões de dose positiva
   const pats = [
     /\*\*Arredondado:\s*(\d{1,2})\s*[Uu]\b/,
     /Arredondado[^0-9]{0,10}(\d{1,2})\s*[Uu]\b/i,
@@ -1157,7 +1176,10 @@ function DoseWidget({suggested, pendingCarbs, onApply, onSkip, onUpdateCarbs, to
 
       {phase==="ask" && <>
         <p style={{fontSize:"12px",color:"var(--text2)",marginBottom:"12px"}}>
-          💉 Dose sugerida: <strong style={{color:"var(--text)",fontSize:"18px",fontFamily:"var(--mono)"}}>{suggested}U</strong>
+          {suggested === 0
+            ? <span style={{color:"#ca8a04",fontWeight:700}}>⚠️ Não aplicar insulina — registrar apenas a refeição</span>
+            : <><span>💉 Dose sugerida: </span><strong style={{color:"var(--text)",fontSize:"18px",fontFamily:"var(--mono)"}}>{suggested}U</strong></>
+          }
           {/* U5: carbos como chip editável inline */}
           {pendingCarbs ? (
             editingCarbs ? (
@@ -1186,9 +1208,18 @@ function DoseWidget({suggested, pendingCarbs, onApply, onSkip, onUpdateCarbs, to
         {/* M2 */}
         <CarbTypeSelector/>
         <div style={{display:"flex",gap:"8px",flexWrap:"wrap",marginTop:"8px"}}>
-          <button className="btn" onClick={()=>{onApply(suggested,carbType);setDone(suggested);}} style={{background:"#16a34a",color:"white",flex:1}}>✓ Aplicar {suggested}U</button>
-          <button className="btn btn-ghost" onClick={()=>setPhase("different")} style={{color:"#ea580c",borderColor:"rgba(234,88,12,.3)"}}>Dose diferente</button>
-          <button className="btn btn-ghost" onClick={()=>{onSkip();setDone(0);}} style={{color:"var(--text3)"}}>Não aplicar</button>
+          {suggested === 0 ? (
+            <>
+              <button className="btn" onClick={()=>{onSkip();setDone(0);}} style={{background:"#ca8a04",color:"white",flex:1}}>✓ Registrar refeição (sem dose)</button>
+              <button className="btn btn-ghost" onClick={()=>setPhase("different")} style={{color:"#ea580c",borderColor:"rgba(234,88,12,.3)"}}>Aplicar dose mesmo assim</button>
+            </>
+          ) : (
+            <>
+              <button className="btn" onClick={()=>{onApply(suggested,carbType);setDone(suggested);}} style={{background:"#16a34a",color:"white",flex:1}}>✓ Aplicar {suggested}U</button>
+              <button className="btn btn-ghost" onClick={()=>setPhase("different")} style={{color:"#ea580c",borderColor:"rgba(234,88,12,.3)"}}>Dose diferente</button>
+              <button className="btn btn-ghost" onClick={()=>{onSkip();setDone(0);}} style={{color:"var(--text3)"}}>Não aplicar</button>
+            </>
+          )}
         </div>
       </>}
 
@@ -1258,8 +1289,9 @@ function Bubble({msg, onApplyDose, onUpdateCarbs, totalIOB, pred60}) {
 }
 
 /* ── HISTORY VIEW ──────────────────────────────────────────────────────── */
-function HistoryView({records, onUpdate}) {
+function HistoryView({records, onUpdate, onDelete}) {
   const [editId, setEditId] = useState(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [editMeal, setEditMeal] = useState("");
   const [editCarbs, setEditCarbs] = useState("");
   const [editDose, setEditDose] = useState("");
@@ -1333,6 +1365,18 @@ function HistoryView({records, onUpdate}) {
                   <div style={{fontSize:"10px",color:"var(--text3)",fontFamily:"var(--mono)"}}>{r.datetime}</div>
                   {onUpdate && <button onClick={()=>startEdit(r)}
                     style={{background:"none",border:"none",color:"var(--text3)",cursor:"pointer",fontSize:"13px",padding:"0 2px",marginLeft:"4px",opacity:.5,lineHeight:1}}>✎</button>}
+                  {onDelete && (confirmDeleteId===r.id ? (
+                    <span style={{display:"inline-flex",gap:"4px",alignItems:"center",marginLeft:"4px"}}>
+                      <button onClick={()=>{onDelete(r.id);setConfirmDeleteId(null);}}
+                        style={{background:"#ef4444",border:"none",borderRadius:"6px",color:"white",cursor:"pointer",fontSize:"10px",fontWeight:700,padding:"2px 7px",lineHeight:1.4}}>apagar</button>
+                      <button onClick={()=>setConfirmDeleteId(null)}
+                        style={{background:"none",border:"1px solid var(--border)",borderRadius:"6px",color:"var(--text3)",cursor:"pointer",fontSize:"10px",padding:"2px 7px",lineHeight:1.4}}>não</button>
+                    </span>
+                  ) : (
+                    <button onClick={()=>{setEditId(null);setConfirmDeleteId(r.id);}}
+                      style={{background:"none",border:"none",color:"var(--text3)",cursor:"pointer",fontSize:"14px",padding:"0 2px",marginLeft:"2px",opacity:.4,lineHeight:1}}
+                      title="Apagar registro">✕</button>
+                  ))}
                 </div>
               </div>
               <div style={{display:"flex",gap:"8px",flexWrap:"wrap",fontSize:"11px",fontWeight:500}}>
@@ -1403,6 +1447,9 @@ function GlucoseChart({glucoseData, history, activeDoses, onRowsUpdate}) {
   const [loading,setLoad] = useState(false);
   const [error,setError]  = useState(null);
   const [count,setCount]  = useState(null);
+  const [showMarkers, setShowMarkers] = useState(true);
+  const showMarkersRef = useRef(true);
+  showMarkersRef.current = showMarkers;
   const canvasRef  = useRef(null);
   const chartRef   = useRef(null);
   const rowsRef    = useRef([]);
@@ -1433,6 +1480,7 @@ function GlucoseChart({glucoseData, history, activeDoses, onRowsUpdate}) {
   const doseMarkersPlugin = {
     id:"dm",
     afterDraw(chart){
+      if(!showMarkersRef.current) return;
       const{ctx,chartArea:ca,scales:{x,y}}=chart; if(!ca||!x||!y) return;
       const rows    = rowsRef.current;
       const history = historyRef.current;
@@ -1709,6 +1757,11 @@ function GlucoseChart({glucoseData, history, activeDoses, onRowsUpdate}) {
 
       {/* Pills de janela — em fluxo acima do canvas */}
       <div style={{display:show?"flex":"none",gap:"5px",alignItems:"center",justifyContent:"flex-end",marginBottom:"4px",flexShrink:0}}>
+        <button onClick={()=>setShowMarkers(v=>!v)}
+          title={showMarkers?"Ocultar marcações":"Mostrar marcações"}
+          style={{padding:"2px 8px",borderRadius:"20px",border:`1px solid ${showMarkers?"var(--accent)":"var(--border)"}`,background:showMarkers?"var(--accent)":"var(--surface)",color:showMarkers?"white":"var(--text3)",fontSize:"11px",cursor:"pointer",transition:"all .15s",marginRight:"2px"}}>
+          {showMarkers?"💉🍽️":"—"}
+        </button>
         {[8,12,24].map(h=>(
           <button key={h} onClick={()=>{setHours(h);load(h);}}
             style={{padding:"2px 9px",borderRadius:"20px",border:`1px solid ${hours===h?"var(--accent)":"var(--border)"}`,background:hours===h?"var(--accent)":"var(--surface)",color:hours===h?"white":"var(--text2)",fontWeight:700,fontSize:"10px",cursor:"pointer",fontFamily:"var(--font)",transition:"all .15s"}}>
@@ -1782,7 +1835,7 @@ function MealModal({
   msgs, loading, timers,
   input, setInput, images, setImages,
   onSend, onKey, onApplyDose, onUpdateCarbs, onDismissTimer,
-  fileRef, taRef, history, onUpdateHistory,
+  fileRef, taRef, history, onUpdateHistory, onDeleteHistory,
   totalIOB, pred60
 }) {
   const [view, setView] = useState("chat"); // "chat" | "history"
@@ -1830,7 +1883,7 @@ function MealModal({
         </div>
 
         {view==="history" ? (
-          <HistoryView records={history} onUpdate={onUpdateHistory}/>
+          <HistoryView records={history} onUpdate={onUpdateHistory} onDelete={onDeleteHistory}/>
         ) : (<>
           {/* Timers pós-refeição */}
           <PostMealTimer timers={timers} onDismiss={onDismissTimer}/>
@@ -2206,6 +2259,17 @@ function App() {
     }
   },[history]);
 
+  /* ── Delete history record — remove do state, doses[] e Supabase ── */
+  const deleteHistRecord = useCallback((id)=>{
+    const rec = history.find(r=>r.id===id);
+    setHist(p=>p.filter(r=>r.id!==id));
+    // Remove da doses[] pelo appliedAt para limpar IOB/COB
+    if(rec?.appliedAt) setDoses(prev=>prev.filter(d=>d.appliedAt!==rec.appliedAt));
+    // Se era o registro pendente, limpa pending
+    setPending(p=>p===id?null:p);
+    sbDeleteMeal(id);
+  },[history]);
+
   /* ── Update carbs no registro pendente — sincroniza doses[] também ── */
   const updatePendingCarbs = useCallback((newCarbs)=>{
     if(!pending) return;
@@ -2284,7 +2348,7 @@ COB adicionado ao modelo. Previsões atualizadas.`,
         const reply2=data2.choices?.[0]?.message?.content||"Sem resposta.";
         const dose2=extractDose(reply2);
         const pendingCarbs2=extractCarbs(reply2);
-        if(dose2){const hid=Date.now().toString();const pendingRec2={id:hid,datetime:fmtDateTime(),meal:text?.slice(0,80)||"Refeição",carbs:pendingCarbs2,suggestedDose:dose2,appliedDose:undefined,glucoseBefore:glucose?.glucose||null};setHist(p=>[...p,pendingRec2]);sbUpsertMeal(pendingRec2);setPending(hid);}
+        if(dose2 != null || pendingCarbs2){const hid=Date.now().toString();const pendingRec2={id:hid,datetime:fmtDateTime(),meal:text?.slice(0,80)||"Refeição",carbs:pendingCarbs2,suggestedDose:dose2??0,appliedDose:undefined,glucoseBefore:glucose?.glucose||null};setHist(p=>[...p,pendingRec2]);sbUpsertMeal(pendingRec2);setPending(hid);}
         setMsgs(p=>[...p.slice(0,-1),{role:"assistant",content:reply2,time:fmtTime(),suggestedDose:dose2,pendingCarbs:pendingCarbs2}]);
         setLoad(false); return;
       }
@@ -2295,9 +2359,10 @@ COB adicionado ao modelo. Previsões atualizadas.`,
       const suggestedDose = extractDose(reply);
       const pendingCarbs = extractCarbs(reply);
 
-      if(suggestedDose){
+      // Registra refeição pendente se há dose (inclusive 0U) OU se há carbos detectados
+      if(suggestedDose != null || pendingCarbs){
         const hid=Date.now().toString();
-        const pendingRec={id:hid,datetime:fmtDateTime(),meal:text?.slice(0,80)||(userMsg.images.length?"(imagem)":"Refeição"),carbs:pendingCarbs,suggestedDose,appliedDose:undefined,glucoseBefore:glucose?.glucose||null};
+        const pendingRec={id:hid,datetime:fmtDateTime(),meal:text?.slice(0,80)||(userMsg.images.length?"(imagem)":"Refeição"),carbs:pendingCarbs,suggestedDose:suggestedDose??0,appliedDose:undefined,glucoseBefore:glucose?.glucose||null};
         setHist(p=>[...p,pendingRec]);
         sbUpsertMeal(pendingRec); // grava com applied_dose=null (pending)
         setPending(hid);
@@ -2454,6 +2519,7 @@ COB adicionado ao modelo. Previsões atualizadas.`,
               taRef={taRef}
               history={history}
               onUpdateHistory={updateHistRecord}
+              onDeleteHistory={deleteHistRecord}
               totalIOB={totalIOBNow}
               pred60={pred60val}
             />
