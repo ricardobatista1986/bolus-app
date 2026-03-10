@@ -587,14 +587,16 @@ const renderMD = text => {
 /* ── EXTRACT CARBS — multiple patterns for LLM output variance ─────────── */
 const extractCarbs = text => {
   if(!text) return null;
+  // Suporta decimais: 21,5g / 21.5g -- normaliza virgula para ponto
+  const parseG = s => { const v = parseFloat(s.replace(",",".")); return isNaN(v)?null:Math.round(v); };
   const pats = [
-    /\*{0,2}Total[:\s*]+(\d+)\s*g\*{0,2}/i,         // **Total: 45g** or Total: 45g
-    /Total\s*(?:CHO|de\s+carboidratos)?[:\s]+(\d+)\s*g/i,
-    /Total[^0-9]{0,15}(\d+)\s*g\s*CHO/i,
-    /CHO\s*total[:\s]+(\d+)\s*g/i,
-    /(\d+)\s*g\s*(?:de\s*)?(?:CHO|carboidratos?)(?:\s+total)?/i,
+    /\*{0,2}Total[:\s*]+(\d+(?:[.,]\d+)?)\s*g\*{0,2}/i,
+    /Total\s*(?:CHO|de\s+carboidratos)?[:\s]+(\d+(?:[.,]\d+)?)\s*g/i,
+    /Total[^0-9]{0,15}(\d+(?:[.,]\d+)?)\s*g\s*CHO/i,
+    /CHO\s*total[:\s]+(\d+(?:[.,]\d+)?)\s*g/i,
+    /(\d+(?:[.,]\d+)?)\s*g\s*(?:de\s*)?(?:CHO|carboidratos?)(?:\s+total)?/i,
   ];
-  for(const p of pats){ const m=text.match(p); if(m){const v=parseInt(m[1]);if(v>0&&v<=300)return v;} }
+  for(const p of pats){ const m=text.match(p); if(m){const v=parseG(m[1]);if(v&&v>0&&v<=300)return v;} }
   return null;
 };
 
@@ -1459,10 +1461,10 @@ function GlucoseChart({glucoseData, history, activeDoses, onRowsUpdate}) {
   hoursRef.current  = hours;
   historyRef.current = history||[];
 
-  // Força redraw do chart quando showMarkers muda — sem isso o canvas não atualiza
+  // Força redraw quando showMarkers ou history mudam (plugins leem refs, não re-criam chart)
   useEffect(()=>{
     if(chartRef.current) chartRef.current.update();
-  },[showMarkers]);
+  },[showMarkers, history]);
 
   const targetZonePlugin = {
     id:"tz",
