@@ -30,6 +30,7 @@
       --radius:     14px;
       --font:       'Outfit', -apple-system, sans-serif;
       --mono:       'DM Mono', monospace;
+      --bar-h:      64px;
     }
     [data-theme="dark"] {
       /* 60-30-10 dark mode:
@@ -64,6 +65,16 @@
     @keyframes fadeIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
     @keyframes slideUp { from{transform:translateY(100%)} to{transform:translateY(0)} }
     @keyframes spin { to { transform:rotate(360deg); } }
+    @keyframes alertIn { from{opacity:0;transform:translateY(-8px)} to{opacity:1;transform:translateY(0)} }
+    @keyframes alertOut { from{opacity:1;transform:translateY(0)} to{opacity:0;transform:translateY(-6px)} }
+    .btn { touch-action: manipulation; }
+    .bottom-bar-btn {
+      flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
+      gap:4px; background:none; border:none; cursor:pointer; color:var(--text2);
+      font-family:var(--font); font-size:11px; font-weight:600;
+      min-height:44px; touch-action:manipulation; transition:color .15s;
+    }
+    .bottom-bar-btn:active { color:var(--accent); }
     textarea::placeholder, input::placeholder { color: var(--text3); }
     textarea:focus, input:focus { outline: none; }
     strong { font-weight: 700; }
@@ -115,6 +126,61 @@
 <div id="root"></div>
 <script type="text/babel">
 const { useState, useRef, useEffect, useCallback, createContext, useContext } = React;
+
+/* ── SVG ICONS ─────────────────────────────────────────────────────────── */
+const SvgIco = ({children,size=18,color="currentColor",style={}}) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2}
+    strokeLinecap="round" strokeLinejoin="round" style={{display:"block",flexShrink:0,...style}}>
+    {children}
+  </svg>
+);
+const IcoSyringe = ({s=18,c="currentColor"}) => <SvgIco size={s} color={c}>
+  <line x1="5" y1="19" x2="19" y2="5"/>
+  <path d="M17 3l4 4-2 2-4-4z"/><path d="M3 21l4-4"/><path d="M9 15 7 13"/><path d="M15 9l-2-2"/><path d="M13 11l-6 6"/>
+</SvgIco>;
+const IcoUtensils = ({s=18,c="currentColor"}) => <SvgIco size={s} color={c}>
+  <path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/>
+  <path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3zm0 0v7"/>
+</SvgIco>;
+const IcoBook = ({s=18,c="currentColor"}) => <SvgIco size={s} color={c}>
+  <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+</SvgIco>;
+const IcoClip = ({s=18,c="currentColor"}) => <SvgIco size={s} color={c}>
+  <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+</SvgIco>;
+const IcoRefresh = ({s=16,c="currentColor"}) => <SvgIco size={s} color={c}>
+  <path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/><path d="M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+</SvgIco>;
+const IcoSun = ({s=18,c="currentColor"}) => <SvgIco size={s} color={c}>
+  <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/>
+  <line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+  <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/>
+  <line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+  <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+</SvgIco>;
+const IcoMoon = ({s=18,c="currentColor"}) => <SvgIco size={s} color={c}>
+  <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+</SvgIco>;
+const IcoWifiOff = ({s=18,c="currentColor"}) => <SvgIco size={s} color={c}>
+  <line x1="1" y1="1" x2="23" y2="23"/>
+  <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/>
+  <path d="M10.71 5.05A16 16 0 0 1 22.56 9"/><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/>
+  <path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/>
+</SvgIco>;
+const IcoX = ({s=18,c="currentColor"}) => <SvgIco size={s} color={c}>
+  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+</SvgIco>;
+const IcoCheck = ({s=18,c="currentColor"}) => <SvgIco size={s} color={c}>
+  <polyline points="20 6 9 17 4 12"/>
+</SvgIco>;
+const IcoHistory = ({s=18,c="currentColor"}) => <SvgIco size={s} color={c}>
+  <path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/>
+  <polyline points="12 7 12 12 15 15"/>
+</SvgIco>;
+const IcoMarkers = ({s=18,c="currentColor"}) => <SvgIco size={s} color={c}>
+  <circle cx="8" cy="12" r="2"/><circle cx="16" cy="8" r="2"/>
+  <line x1="8" y1="12" x2="8" y2="22"/><line x1="16" y1="8" x2="16" y2="22"/>
+</SvgIco>;
 
 /* ── CONSTANTS ─────────────────────────────────────────────────────────── */
 const SUPABASE_URL   = "https://sfsutycytyonznhwtfkf.supabase.co";
@@ -697,7 +763,7 @@ function GlucoseWidget({reading, loading, onRefresh, activeDoses, tirStats, pred
   const [,tick] = useState(0);
   useEffect(()=>{ const id=setInterval(()=>tick(t=>t+1),30000); return()=>clearInterval(id); },[]);
 
-  // alertas movidos para AlertBanner
+  // alertas no AlertQueue (topo da app)
 
   const live        = filterDoses(activeDoses);
   const totalIOB    = calcTotalIOB(live);
@@ -814,22 +880,37 @@ function GlucoseWidget({reading, loading, onRefresh, activeDoses, tirStats, pred
             )}
           </div>
 
-          {/* Direita: IOB + carbos ativos */}
+          {/* Direita: IOB + carbos ativos, com codificação de risco */}
           <div style={{flex:1,minWidth:0,textAlign:"left"}}>
-            {totalIOB>0&&iobRem>0 ? (<>
-              <div style={{fontSize:"12px",fontWeight:700,color:"var(--accent)",fontFamily:"var(--mono)"}}>💉 {totalIOB}U</div>
-              <div style={{fontSize:"10px",color:"var(--text3)"}}>{iobStr()} IOB</div>
-              {totalCarbs>0 && (
-                <div style={{marginTop:"4px"}}>
-                  <div style={{fontSize:"11px",fontWeight:600,color:"#16a34a"}}>🍽️ {totalCarbs}g CHO</div>
-                  <div style={{fontSize:"9px",color:"var(--text3)"}}>{carbRemStr()} restante</div>
+            {totalIOB>0&&iobRem>0 ? (()=>{
+              // Risco: <1U cinza, 1-2U accent, >2U vermelho com pulso
+              const iobColor = totalIOB < 1 ? "var(--text3)" : totalIOB < 2 ? "var(--accent)" : "#ef4444";
+              const iobBorder = totalIOB > 2 ? "1px solid rgba(239,68,68,.4)" : "none";
+              const iobBg = totalIOB > 2 ? "rgba(239,68,68,.08)" : "transparent";
+              return (<>
+                <div style={{background:iobBg,border:iobBorder,borderRadius:"7px",padding:totalIOB>2?"3px 5px":"0",
+                  animation:totalIOB>2?"pulse 2s ease-in-out infinite":undefined,display:"inline-block"}}>
+                  <div style={{fontSize:"12px",fontWeight:700,color:iobColor,fontFamily:"var(--mono)",display:"flex",alignItems:"center",gap:"4px"}}>
+                    <IcoSyringe s={12} c={iobColor}/> {totalIOB}U
+                  </div>
+                  <div style={{fontSize:"10px",color:"var(--text3)"}}>{iobStr()} IOB</div>
                 </div>
-              )}
-            </>) : (<>
-              <div style={{fontSize:"10px",color:"var(--text3)"}}>Sem IOB ativo</div>
+                {totalCarbs>0 && (
+                  <div style={{marginTop:"4px"}}>
+                    <div style={{fontSize:"11px",fontWeight:600,color:"#16a34a",display:"flex",alignItems:"center",gap:"3px"}}>
+                      <IcoUtensils s={11} c="#16a34a"/>{totalCarbs}g
+                    </div>
+                    <div style={{fontSize:"9px",color:"var(--text3)"}}>{carbRemStr()} restante</div>
+                  </div>
+                )}
+              </>);
+            })() : (<>
+              <div style={{fontSize:"10px",color:"var(--text3)"}}>Sem IOB</div>
               {totalCarbs>0 && (
                 <div style={{marginTop:"4px"}}>
-                  <div style={{fontSize:"11px",fontWeight:600,color:"#16a34a"}}>🍽️ {totalCarbs}g CHO</div>
+                  <div style={{fontSize:"11px",fontWeight:600,color:"#16a34a",display:"flex",alignItems:"center",gap:"3px"}}>
+                    <IcoUtensils s={11} c="#16a34a"/>{totalCarbs}g
+                  </div>
                   <div style={{fontSize:"9px",color:"var(--text3)"}}>{carbRemStr()} restante</div>
                 </div>
               )}
@@ -837,7 +918,9 @@ function GlucoseWidget({reading, loading, onRefresh, activeDoses, tirStats, pred
           </div>
         </div>
 
-        <div style={{textAlign:"center",fontSize:"9px",color:"var(--text3)",marginTop:"6px",opacity:.5}}>↺ toque para atualizar</div>
+        <div style={{textAlign:"center",fontSize:"9px",color:"var(--text3)",marginTop:"6px",opacity:.45,display:"flex",alignItems:"center",justifyContent:"center",gap:"4px"}}>
+          <IcoRefresh s={11} c="var(--text3)"/> toque para atualizar
+        </div>
 
         {/* ── Prediction badges — sem M5, formato simples ── */}
         {predictions?.length>0 && (() => {
@@ -889,133 +972,166 @@ function GlucoseWidget({reading, loading, onRefresh, activeDoses, tirStats, pred
   );
 }
 
-/* ── ALERT BANNER — fluxo normal no topo (abaixo do header), não overlay ──
- *  Cada alerta é uma faixa opaca em fluxo, empurrando o conteúdo abaixo.
- *  dismissed sobe para o App para reset automático a cada nova leitura.
- * ─────────────────────────────────────────────────────────────────────── */
-function AlertBanner({reading, predictions, history, activeDoses, dismissed, onDismiss, onLogForgottenMeal}) {
+/* ── ALERT QUEUE — 1 alerta por vez, 2s auto-dismiss, 2min cooldown ────────
+ *  Prioridade: hipo > variação rápida > hipo noturna > correção > refeição
+ *  Auto-dismiss: 2s. Cooldown para reaparecer: 2min se condição persistir.
+ *  Dismiss manual: via botão X (hipo/rapid: cooldown 2min; outros: dismissed Set)
+ * ─────────────────────────────────────────────────────────────────────────── */
+function AlertQueue({reading, predictions, history, activeDoses, dismissed, onDismiss, onLogForgottenMeal}) {
   const {dark} = useContext(ThemeCtx);
   const [fmCarbs, setFmCarbs] = useState("");
   const [fmMins,  setFmMins]  = useState(15);
   const [fmType,  setFmType]  = useState("fast");
   const [fmShow,  setFmShow]  = useState(false);
+  const [visibleType, setVisibleType] = useState(null);
+  const [exiting,     setExiting]     = useState(false);
+  const cooldowns  = useRef({});
+  const autoTimer  = useRef(null);
+  const exitTimer  = useRef(null);
+  const [tick, setTick] = useState(0);
 
-  // Hipo: pulsa 3x (4.5s) -> some -> reaparece so apos 2min se ainda < 70
-  const [hypoVisible, setHypoVisible] = useState(false);
-  const hypoHiddenAtRef = useRef(0);
-  const hypoTimerRef    = useRef(null);
-  const g_raw        = reading?.glucose;
-  const hypoCondition= !!g_raw && !reading?.error && g_raw < 70;
-
-  useEffect(() => {
-    if (!hypoCondition) {
-      clearTimeout(hypoTimerRef.current);
-      setHypoVisible(false);
-      hypoHiddenAtRef.current = 0;
-      return;
-    }
-    if (hypoVisible) return;
-    if (Date.now() - hypoHiddenAtRef.current < 120000) return; // cooldown 2min
-    setHypoVisible(true);
-    hypoTimerRef.current = setTimeout(() => {
-      setHypoVisible(false);
-      hypoHiddenAtRef.current = Date.now();
-    }, 4500); // 3 pulsos x 1.5s
-  }, [hypoCondition, g_raw]);
-
-  if(!reading?.glucose || reading?.error) return null;
-
-  const g    = reading.glucose;
-  const live = filterDoses(activeDoses);
-  const nowH = new Date().getHours();
-  const hypoNow       = g < 70;
-  const sixHAgo       = Date.now() - 6*60*60*1000;
+  // --- Cálculo de condições (antes de qualquer hook condicional) ---
+  const hasReading = !!(reading?.glucose && !reading?.error);
+  const g     = hasReading ? reading.glucose : 0;
+  const live  = filterDoses(activeDoses);
+  const nowH  = new Date().getHours();
+  const vel   = hasReading ? (reading._velocity || 0) : 0;
+  const hypoNow       = hasReading && g < 70;
+  const rapidVelNow   = hasReading && Math.abs(vel) >= 2.5;
+  const sixHAgo       = Date.now() - 6*3600000;
   const lastRealDose  = (history||[])
     .filter(r => r.appliedDose > 0 && r.appliedAt && r.appliedAt >= sixHAgo)
     .sort((a,b) => b.appliedAt - a.appliedAt)[0];
   const minsPostDose  = lastRealDose ? Math.round((Date.now()-lastRealDose.appliedAt)/60000) : null;
-  const postMealAlert = !hypoNow && g>160 && minsPostDose!==null && minsPostDose>=120;
-  const nightWindow   = nowH>=22 || nowH<=6;
-  const nightHypoAlert= !hypoNow && nightWindow && predictions?.some(p=>p.t>=60&&p.value<70);
-  const vel           = reading?._velocity || 0;
+  const postMealAlert = hasReading && !hypoNow && g > 160 && minsPostDose !== null && minsPostDose >= 120;
+  const nightWindow   = nowH >= 22 || nowH <= 6;
+  const nightHypoAlert= hasReading && !hypoNow && nightWindow && predictions?.some(p => p.t >= 60 && p.value < 70);
   const totalCOB      = calcTotalActiveCarbs(live);
-  const forgottenAlert= !hypoNow && vel >= 1.5 && totalCOB === 0 && !dismissed.has("forgottenMeal");
-
+  const forgottenAlert= hasReading && !hypoNow && vel >= 1.5 && totalCOB === 0 && !dismissed.has("forgottenMeal");
   const ISF = 30, corrTarget = 160;
   const corrDose = postMealAlert ? Math.max(0, Math.round((g - corrTarget) / ISF)) : null;
+  const now = Date.now();
+  const candidates = [];
+  if (hypoNow)       candidates.push('hypo');
+  if (rapidVelNow)   candidates.push('rapid');
+  if (nightHypoAlert && !dismissed.has("nightHypo")) candidates.push('nightHypo');
+  if (postMealAlert  && !dismissed.has("postMeal"))  candidates.push('postMeal');
+  if (forgottenAlert) candidates.push('forgottenMeal');
+  const nextType = hasReading
+    ? (candidates.find(t => now - (cooldowns.current[t]||0) >= 120000) || null)
+    : null;
 
-  const hasAny = hypoVisible
-    || (postMealAlert   && !dismissed.has("postMeal"))
-    || (nightHypoAlert  && !dismissed.has("nightHypo"))
-    || forgottenAlert;
+  // Re-avaliar a cada 30s (para cooldown de 2min expirar)
+  useEffect(() => {
+    const id = setInterval(() => setTick(t => t+1), 30000);
+    return () => clearInterval(id);
+  }, []);
+  useEffect(() => () => { clearTimeout(autoTimer.current); clearTimeout(exitTimer.current); }, []);
 
-  if(!hasAny) return null;
+  // Lógica de exibição — TODOS os hooks antes de qualquer return
+  useEffect(() => {
+    if (!hasReading) { setVisibleType(null); return; }
+    if (fmShow) { clearTimeout(autoTimer.current); return; }
+    if (!nextType) {
+      if (visibleType) {
+        setExiting(true);
+        exitTimer.current = setTimeout(() => { setVisibleType(null); setExiting(false); }, 150);
+      }
+      return;
+    }
+    if (nextType === visibleType) return;
+    clearTimeout(autoTimer.current);
+    setExiting(false);
+    setVisibleType(nextType);
+    setFmShow(false);
+    autoTimer.current = setTimeout(() => {
+      setExiting(true);
+      exitTimer.current = setTimeout(() => {
+        setVisibleType(null);
+        setExiting(false);
+        cooldowns.current[nextType] = Date.now();
+        setTick(t => t+1);
+      }, 150);
+    }, 2000);
+  }, [nextType, tick, fmShow, hasReading]);
 
-  // Estilos de linha base
-  const row = (bg, border) => ({
-    padding:"9px 14px",
-    background:bg, borderBottom:`1px solid ${border}`,
-    flexShrink:0,
-  });
+  const dismiss = (type, useParentDismiss=false) => {
+    clearTimeout(autoTimer.current);
+    clearTimeout(exitTimer.current);
+    setVisibleType(null); setExiting(false); setFmShow(false);
+    cooldowns.current[type] = Date.now();
+    if (useParentDismiss) onDismiss(type);
+    setTick(t => t+1);
+  };
+
+  if (!hasReading || !visibleType) return null;
 
   const submitForgotten = () => {
     const c = parseInt(fmCarbs);
-    if(!c || c<=0 || c>300) return;
+    if (!c || c <= 0 || c > 300) return;
     onLogForgottenMeal && onLogForgottenMeal(c, fmMins, fmType);
-    onDismiss("forgottenMeal");
-    setFmCarbs(""); setFmShow(false);
+    dismiss('forgottenMeal', true);
+    setFmCarbs("");
   };
 
+  // Estilos base do alerta
+  const alertWrap = (bg, border) => ({
+    padding: "9px 14px",
+    background: bg, borderBottom: `1px solid ${border}`,
+    flexShrink: 0,
+    animation: exiting ? "alertOut .15s ease forwards" : "alertIn .2s ease forwards",
+  });
+  const closeBtn = (color, type, useParent=false) => (
+    <button onClick={() => dismiss(type, useParent)}
+      aria-label="Fechar alerta"
+      style={{background:"none",border:"1px solid "+color+"40",borderRadius:"8px",cursor:"pointer",
+        color:color,padding:"4px",display:"flex",alignItems:"center",justifyContent:"center",
+        flexShrink:0,minWidth:"32px",minHeight:"32px",opacity:.8}}>
+      <IcoX s={14} c={color}/>
+    </button>
+  );
+
   return (
-    <div style={{flexShrink:0}}>
+    <div style={{flexShrink:0}} role="status" aria-live="polite">
 
-      {/* ── Hipo em curso — não dismissível, pulsante ── */}
-      {hypoVisible && (
-        <div style={{...row(
-          dark?"#3b0000":"#fef2f2",
-          dark?"rgba(239,68,68,.5)":"rgba(239,68,68,.3)"
-        ), animation:"pulse 1.5s ease 3"}}>
-          <div style={{fontSize:"12px",fontWeight:800,color:"#ef4444",marginBottom:"2px"}}>
-            🚨 Hipoglicemia em curso — {g} mg/dL
-          </div>
-          <div style={{fontSize:"11px",color:dark?"rgba(255,100,100,.9)":"#991b1b",lineHeight:1.4}}>
-            <strong>Regra 15-15:</strong> 15g de CHO rápido agora.{" "}
-            <span style={{opacity:.8}}>Ex: 150ml suco, 3 balas, 1 col. açúcar. Remeça em 15min.</span>
-          </div>
-        </div>
-      )}
-
-      {/* ── Correção pós-refeição — dismissível ── */}
-      {postMealAlert && !dismissed.has("postMeal") && (
-        <div style={{...row(
-          dark?"#1a1200":"#fefce8",
-          dark?"rgba(202,138,4,.4)":"rgba(202,138,4,.25)"
-        ), display:"flex", alignItems:"center", justifyContent:"space-between", gap:"8px"}}>
-          <div style={{flex:1,minWidth:0}}>
-            <div style={{fontSize:"11px",fontWeight:700,color:"#ca8a04"}}>💊 Correção pós-refeição</div>
-            <div style={{fontSize:"10px",color:dark?"rgba(255,200,50,.65)":"#92400e",marginTop:"1px"}}>
-              {g} mg/dL · alvo {corrTarget} · {minsPostDose}min pós dose
+      {/* ── Hipoglicemia — máxima prioridade ── */}
+      {visibleType === 'hypo' && (
+        <div style={{...alertWrap(dark?"#3b0000":"#fef2f2", dark?"rgba(239,68,68,.5)":"rgba(239,68,68,.3)"),
+          display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:"8px"}}>
+          <div style={{flex:1}}>
+            <div style={{fontSize:"13px",fontWeight:800,color:"#ef4444",marginBottom:"2px"}}>
+              🚨 Hipoglicemia — {g} mg/dL
+            </div>
+            <div style={{fontSize:"11px",color:dark?"rgba(255,100,100,.9)":"#991b1b",lineHeight:1.4}}>
+              <strong>Regra 15-15:</strong> 15g CHO rápido agora.{" "}
+              <span style={{opacity:.8}}>Ex: 150ml suco · 3 balas · 1 col. açúcar. Checar em 15min.</span>
             </div>
           </div>
-          <div style={{display:"flex",alignItems:"center",gap:"8px",flexShrink:0}}>
-            {corrDose>0 && (
-              <div style={{background:"rgba(202,138,4,.2)",border:"1px solid rgba(202,138,4,.45)",borderRadius:"8px",padding:"3px 9px",textAlign:"center"}}>
-                <div style={{fontSize:"15px",fontWeight:800,color:"#ca8a04",fontFamily:"var(--mono)",lineHeight:1}}>{corrDose}U</div>
-                <div style={{fontSize:"9px",color:"#92400e"}}>sugerido</div>
-              </div>
-            )}
-            {corrDose===0 && <div style={{fontSize:"10px",color:"#ca8a04"}}>IOB suficiente</div>}
-            <button onClick={()=>onDismiss("postMeal")} style={{background:"none",border:"none",cursor:"pointer",color:"#ca8a04",fontSize:"18px",lineHeight:1,padding:"2px 6px",opacity:.6}}>×</button>
-          </div>
+          {closeBtn("#ef4444","hypo")}
         </div>
       )}
 
-      {/* ── Alerta noturno — dismissível ── */}
-      {nightHypoAlert && !dismissed.has("nightHypo") && (
-        <div style={{...row(
-          dark?"#200808":"#fff1f2",
-          dark?"rgba(239,68,68,.35)":"rgba(239,68,68,.2)"
-        ), display:"flex", alignItems:"center", justifyContent:"space-between", gap:"8px"}}>
+      {/* ── Variação rápida ── */}
+      {visibleType === 'rapid' && (
+        <div style={{...alertWrap(
+          vel > 0 ? (dark?"rgba(202,138,4,.12)":"rgba(254,249,195,.9)") : (dark?"rgba(239,68,68,.12)":"rgba(254,226,226,.9)"),
+          vel > 0 ? "rgba(202,138,4,.3)" : "rgba(239,68,68,.3)"
+        ), display:"flex",alignItems:"center",gap:"8px"}}>
+          <span style={{fontSize:"16px"}}>{vel > 0 ? "📈" : "📉"}</span>
+          <div style={{flex:1}}>
+            <span style={{fontSize:"12px",fontWeight:700,color: vel > 0 ? "#ca8a04" : "#ef4444"}}>
+              Variação rápida: {vel > 0 ? "+" : ""}{vel} mg/dL/min
+            </span>
+            <span style={{fontSize:"10px",color:"var(--text3)",marginLeft:"6px"}}>acompanhe de perto</span>
+          </div>
+          {closeBtn(vel > 0 ? "#ca8a04" : "#ef4444","rapid")}
+        </div>
+      )}
+
+      {/* ── Hipo noturna prevista ── */}
+      {visibleType === 'nightHypo' && (
+        <div style={{...alertWrap(dark?"#200808":"#fff1f2",dark?"rgba(239,68,68,.35)":"rgba(239,68,68,.2)"),
+          display:"flex",alignItems:"center",justifyContent:"space-between",gap:"8px"}}>
           <div style={{flex:1,minWidth:0}}>
             <div style={{fontSize:"11px",fontWeight:700,color:"#ef4444"}}>
               🌙 Alerta noturno — hipo prevista em {predictions.find(p=>p.t>=60&&p.value<70)?.t}min
@@ -1024,19 +1140,39 @@ function AlertBanner({reading, predictions, history, activeDoses, dismissed, onD
               Considere comer algo leve antes de dormir.
             </div>
           </div>
-          <button onClick={()=>onDismiss("nightHypo")} style={{background:"none",border:"none",cursor:"pointer",color:"#ef4444",fontSize:"18px",lineHeight:1,padding:"2px 6px",opacity:.6,flexShrink:0}}>×</button>
+          {closeBtn("#ef4444","nightHypo",true)}
         </div>
       )}
 
-      {/* ── A3: Refeição não anunciada — dismissível ── */}
-      {forgottenAlert && (
-        <div style={{...row(
-          dark?"#1a1400":"#fefce8",
-          dark?"rgba(202,138,4,.35)":"rgba(202,138,4,.2)"
-        )}}>
+      {/* ── Correção pós-refeição ── */}
+      {visibleType === 'postMeal' && (
+        <div style={{...alertWrap(dark?"#1a1200":"#fefce8",dark?"rgba(202,138,4,.4)":"rgba(202,138,4,.25)"),
+          display:"flex",alignItems:"center",justifyContent:"space-between",gap:"8px"}}>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:"11px",fontWeight:700,color:"#ca8a04"}}>💊 Correção pós-refeição</div>
+            <div style={{fontSize:"10px",color:dark?"rgba(255,200,50,.65)":"#92400e",marginTop:"1px"}}>
+              {g} mg/dL · alvo {corrTarget} · {minsPostDose}min pós dose
+            </div>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:"8px",flexShrink:0}}>
+            {corrDose > 0 && (
+              <div style={{background:"rgba(202,138,4,.2)",border:"1px solid rgba(202,138,4,.45)",borderRadius:"8px",padding:"3px 9px",textAlign:"center"}}>
+                <div style={{fontSize:"15px",fontWeight:800,color:"#ca8a04",fontFamily:"var(--mono)",lineHeight:1}}>{corrDose}U</div>
+                <div style={{fontSize:"9px",color:"#92400e"}}>sugerido</div>
+              </div>
+            )}
+            {corrDose === 0 && <div style={{fontSize:"10px",color:"#ca8a04"}}>IOB suficiente</div>}
+            {closeBtn("#ca8a04","postMeal",true)}
+          </div>
+        </div>
+      )}
+
+      {/* ── Refeição não anunciada ── */}
+      {visibleType === 'forgottenMeal' && (
+        <div style={{...alertWrap(dark?"#1a1400":"#fefce8",dark?"rgba(202,138,4,.35)":"rgba(202,138,4,.2)")}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:"8px"}}>
             <div style={{flex:1,minWidth:0}}>
-              <div style={{fontSize:"11px",fontWeight:700,color:"#ca8a04"}}>🍽️ Glicemia subindo sem carbos registrados</div>
+              <div style={{fontSize:"11px",fontWeight:700,color:"#ca8a04"}}>🍽️ Glicemia subindo sem carbos</div>
               <div style={{fontSize:"10px",color:dark?"rgba(255,200,50,.65)":"#92400e",marginTop:"1px"}}>
                 +{vel} mg/dL/min — você comeu algo sem registrar?
               </div>
@@ -1044,11 +1180,13 @@ function AlertBanner({reading, predictions, history, activeDoses, dismissed, onD
             <div style={{display:"flex",gap:"6px",flexShrink:0}}>
               {!fmShow && (
                 <button onClick={()=>setFmShow(true)}
-                  style={{background:"rgba(202,138,4,.2)",border:"1px solid rgba(202,138,4,.5)",borderRadius:"7px",padding:"3px 10px",fontSize:"11px",fontWeight:700,color:"#ca8a04",cursor:"pointer",fontFamily:"var(--font)"}}>
+                  style={{background:"rgba(202,138,4,.2)",border:"1px solid rgba(202,138,4,.5)",borderRadius:"7px",
+                    padding:"4px 12px",fontSize:"11px",fontWeight:700,color:"#ca8a04",cursor:"pointer",
+                    fontFamily:"var(--font)",minHeight:"32px",touchAction:"manipulation"}}>
                   Registrar
                 </button>
               )}
-              <button onClick={()=>{onDismiss("forgottenMeal");setFmShow(false);}} style={{background:"none",border:"none",cursor:"pointer",color:"#ca8a04",fontSize:"18px",lineHeight:1,padding:"2px 6px",opacity:.6}}>×</button>
+              {closeBtn("#ca8a04","forgottenMeal",true)}
             </div>
           </div>
           {fmShow && (
@@ -1056,7 +1194,7 @@ function AlertBanner({reading, predictions, history, activeDoses, dismissed, onD
               <div style={{display:"flex",gap:"4px",marginBottom:"8px"}}>
                 {Object.entries(CHO_TYPES).map(([key,{emoji,label}]) => (
                   <button key={key} onClick={()=>setFmType(key)}
-                    style={{flex:1,padding:"5px 2px",borderRadius:"7px",
+                    style={{flex:1,padding:"6px 2px",borderRadius:"7px",minHeight:"36px",
                       border:`1px solid ${fmType===key?"rgba(202,138,4,.7)":"rgba(202,138,4,.2)"}`,
                       background:fmType===key?"rgba(202,138,4,.2)":"transparent",
                       color:fmType===key?"#ca8a04":"#92400e",fontSize:"10px",
@@ -1067,10 +1205,14 @@ function AlertBanner({reading, predictions, history, activeDoses, dismissed, onD
               </div>
               <div style={{display:"flex",gap:"8px",alignItems:"center",marginBottom:"8px"}}>
                 <input value={fmCarbs} onChange={e=>setFmCarbs(e.target.value.replace(/[^0-9]/g,""))}
-                  placeholder="g CHO" autoFocus onKeyDown={e=>e.key==="Enter"&&submitForgotten()}
-                  style={{width:"80px",background:"var(--surface)",border:"1px solid rgba(202,138,4,.4)",borderRadius:"8px",padding:"7px 10px",color:"var(--text)",fontSize:"16px",fontFamily:"var(--mono)",textAlign:"center"}}/>
+                  placeholder="g CHO" autoFocus inputMode="numeric" pattern="[0-9]*"
+                  onKeyDown={e=>e.key==="Enter"&&submitForgotten()}
+                  style={{width:"80px",background:"var(--surface)",border:"1px solid rgba(202,138,4,.4)",
+                    borderRadius:"8px",padding:"8px 10px",color:"var(--text)",fontSize:"16px",
+                    fontFamily:"var(--mono)",textAlign:"center"}}/>
                 <select value={fmMins} onChange={e=>setFmMins(parseInt(e.target.value))}
-                  style={{flex:1,background:"var(--surface)",border:"1px solid rgba(202,138,4,.4)",borderRadius:"8px",padding:"7px 8px",color:"var(--text)",fontSize:"11px",fontFamily:"var(--font)"}}>
+                  style={{flex:1,background:"var(--surface)",border:"1px solid rgba(202,138,4,.4)",
+                    borderRadius:"8px",padding:"8px",color:"var(--text)",fontSize:"11px",fontFamily:"var(--font)"}}>
                   <option value={0}>agora</option>
                   <option value={15}>há 15min</option>
                   <option value={30}>há 30min</option>
@@ -1079,8 +1221,11 @@ function AlertBanner({reading, predictions, history, activeDoses, dismissed, onD
                 </select>
               </div>
               <button onClick={submitForgotten}
-                style={{width:"100%",padding:"7px",borderRadius:"8px",background:"rgba(202,138,4,.25)",border:"1px solid rgba(202,138,4,.5)",color:"#ca8a04",fontWeight:700,fontSize:"12px",cursor:"pointer",fontFamily:"var(--font)"}}>
-                ✓ Registrar refeição retroativa
+                style={{width:"100%",padding:"8px",borderRadius:"8px",background:"rgba(202,138,4,.25)",
+                  border:"1px solid rgba(202,138,4,.5)",color:"#ca8a04",fontWeight:700,fontSize:"12px",
+                  cursor:"pointer",fontFamily:"var(--font)",minHeight:"40px"}}>
+                <IcoCheck s={13} c="#ca8a04" style={{display:"inline",marginRight:"5px"}}/>
+                Registrar refeição retroativa
               </button>
             </div>
           )}
@@ -1090,7 +1235,6 @@ function AlertBanner({reading, predictions, history, activeDoses, dismissed, onD
     </div>
   );
 }
-
 /* ── POST MEAL TIMER ────────────────────────────────────────────────────── */
 function PostMealTimer({timers,onDismiss}) {
   const [,tick]=useState(0);
@@ -1326,7 +1470,7 @@ function HistoryView({records, onUpdate, onDelete}) {
                   <div style={{fontSize:"10px",color:"var(--text3)",marginBottom:"3px",fontWeight:600}}>🍽️ Carboidratos</div>
                   <div style={{display:"flex",alignItems:"center",gap:"6px"}}>
                     <input value={editCarbs} onChange={e=>setEditCarbs(e.target.value.replace(/[^0-9]/g,""))}
-                      placeholder="—" type="number"
+                      placeholder="—" type="number" inputMode="numeric"
                       style={{width:"80px",background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"8px",padding:"7px 10px",color:"var(--text)",fontSize:"15px",fontFamily:"var(--mono)",textAlign:"center"}}/>
                     <span style={{fontSize:"11px",color:"var(--text3)"}}>g CHO</span>
                   </div>
@@ -1336,7 +1480,7 @@ function HistoryView({records, onUpdate, onDelete}) {
                     <div style={{fontSize:"10px",color:"var(--text3)",marginBottom:"3px",fontWeight:600}}>💉 Dose aplicada</div>
                     <div style={{display:"flex",alignItems:"center",gap:"6px"}}>
                       <input value={editDose} onChange={e=>setEditDose(e.target.value.replace(/[^0-9]/g,""))}
-                        placeholder={r.appliedDose===0?"0":"—"} type="number" min="0" max="30"
+                        placeholder={r.appliedDose===0?"0":"—"} type="number" inputMode="numeric" min="0" max="30"
                         style={{width:"60px",background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"8px",padding:"7px 10px",color:"var(--text)",fontSize:"15px",fontFamily:"var(--mono)",textAlign:"center"}}/>
                       <span style={{fontSize:"11px",color:"var(--text3)"}}>U</span>
                     </div>
@@ -1406,7 +1550,7 @@ function LibraryView({library,onUse,onDelete}) {
           <input value={name} onChange={e=>setName(e.target.value)} placeholder="Nome do alimento"
             style={{width:"100%",background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"10px",padding:"10px 12px",color:"var(--text)",fontSize:"13px",marginBottom:"8px"}}/>
           <div style={{display:"flex",gap:"8px",marginBottom:"10px"}}>
-            <input value={carbs} onChange={e=>setCarbs(e.target.value)} placeholder="CHO (g)" type="number"
+            <input value={carbs} onChange={e=>setCarbs(e.target.value)} placeholder="CHO (g)" type="number" inputMode="numeric"
               style={{width:"110px",background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"10px",padding:"10px 12px",color:"var(--text)",fontSize:"13px"}}/>
             <input value={desc} onChange={e=>setDesc(e.target.value)} placeholder="Descrição (opcional)"
               style={{flex:1,background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"10px",padding:"10px 12px",color:"var(--text)",fontSize:"13px"}}/>
@@ -1753,8 +1897,9 @@ function GlucoseChart({glucoseData, history, activeDoses, onRowsUpdate}) {
       <div style={{display:show?"flex":"none",gap:"5px",alignItems:"center",justifyContent:"flex-end",marginBottom:"4px",flexShrink:0}}>
         <button onClick={()=>setShowMarkers(v=>!v)}
           title={showMarkers?"Ocultar marcações":"Mostrar marcações"}
-          style={{padding:"2px 8px",borderRadius:"20px",border:`1px solid ${showMarkers?"var(--accent)":"var(--border)"}`,background:showMarkers?"var(--accent)":"var(--surface)",color:showMarkers?"white":"var(--text3)",fontSize:"11px",cursor:"pointer",transition:"all .15s",marginRight:"2px"}}>
-          {showMarkers?"💉🍽️":"—"}
+          style={{padding:"3px 8px",borderRadius:"20px",border:`1px solid ${showMarkers?"var(--accent)":"var(--border)"}`,background:showMarkers?"var(--accent)":"var(--surface)",color:showMarkers?"white":"var(--text3)",fontSize:"11px",cursor:"pointer",transition:"all .15s",marginRight:"2px",display:"flex",alignItems:"center",gap:"3px",minHeight:"26px"}}>
+          <IcoMarkers s={12} c={showMarkers?"white":"var(--text3)"}/>
+          {showMarkers && <span style={{fontSize:"10px"}}>vis</span>}
         </button>
         {[8,12,24].map(h=>(
           <button key={h} onClick={()=>{setHours(h);load(h);}}
@@ -1762,7 +1907,10 @@ function GlucoseChart({glucoseData, history, activeDoses, onRowsUpdate}) {
             {h}h
           </button>
         ))}
-        <button onClick={()=>load()} style={{padding:"2px 7px",borderRadius:"20px",border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text3)",fontSize:"11px",cursor:"pointer"}}>&#x21BA;</button>
+        <button onClick={()=>load()} aria-label="Recarregar gráfico"
+          style={{padding:"4px 8px",borderRadius:"20px",border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text3)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",minWidth:"30px",minHeight:"26px"}}>
+          <IcoRefresh s={13} c="var(--text3)"/>
+        </button>
       </div>
       {/* Canvas sempre no DOM — mostra/oculta via display */}
       <div style={{flex:1,position:"relative",minHeight:0,display:show?"block":"none"}}>
@@ -1775,50 +1923,59 @@ function GlucoseChart({glucoseData, history, activeDoses, onRowsUpdate}) {
   );
 }
 
-/* ── FAB ──────────────────────────────────────────────────────────────── */
-function FAB({onRegisterDose, totalIOB, pred60}) {
+/* ── FAB / DOSE AVULSA ────────────────────────────────────────────────── */
+function FAB({onRegisterDose, totalIOB, pred60, open, onClose}) {
   const {dark} = useContext(ThemeCtx);
-  const [open,setOpen]=useState(false),[dose,setDose]=useState(""),[note,setNote]=useState("");
-  const sub=()=>{const u=Math.round(parseFloat(dose));if(!u||u<=0||u>50)return;onRegisterDose(u,note||"Dose avulsa");setDose("");setNote("");setOpen(false);};
+  const [dose,setDose]=useState(""),[note,setNote]=useState("");
+  const sub=()=>{const u=Math.round(parseFloat(dose));if(!u||u<=0||u>50)return;onRegisterDose(u,note||"Dose avulsa");setDose("");setNote("");onClose();};
   const stackingRisk = totalIOB && totalIOB > 2;
+  if (!open) return null;
   return (
-    <div style={{position:"fixed",bottom:"16px",right:"16px",zIndex:200,display:"flex",flexDirection:"column",alignItems:"flex-end",gap:"10px"}}>
-      {open&&(
-        <div className="card" style={{padding:"16px",width:"230px",boxShadow:"var(--shadow-md)",animation:"fadeIn .18s ease"}}>
-          {/* S2: Warning de empilhamento no FAB */}
-          {stackingRisk && (
-            <div style={{
-              background:dark?"rgba(239,68,68,.12)":"rgba(254,226,226,.8)",
-              border:"1px solid rgba(239,68,68,.35)",
-              borderRadius:"8px",padding:"8px 10px",marginBottom:"12px",
-              fontSize:"11px",color:"#ef4444",lineHeight:1.4
-            }}>
-              ⚠️ <strong>IOB alto: {totalIOB}U</strong>{pred60?` · +60min: ${pred60} mg/dL`:""}<br/>
-              <span style={{opacity:.8}}>Confirme se nova dose é necessária.</span>
-            </div>
-          )}
-          <div style={{fontSize:"13px",fontWeight:700,color:"var(--accent)",marginBottom:"12px"}}>💉 Dose avulsa</div>
-          <input value={dose} onChange={e=>setDose(e.target.value)} onKeyDown={e=>e.key==="Enter"&&sub()} placeholder="Unidades (ex: 4)" type="number" step="1" min="1" max="50" autoFocus
-            style={{width:"100%",background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"10px",padding:"10px 12px",color:"var(--text)",fontSize:"18px",fontFamily:"var(--mono)",marginBottom:"8px",textAlign:"center"}}/>
-          <input value={note} onChange={e=>setNote(e.target.value)} onKeyDown={e=>e.key==="Enter"&&sub()} placeholder="Nota (opcional)"
-            style={{width:"100%",background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"10px",padding:"10px 12px",color:"var(--text)",fontSize:"13px",marginBottom:"12px"}}/>
-          <button className="btn btn-primary" onClick={sub} style={{width:"100%"}}>Registrar dose</button>
+    <>
+      <div style={{position:"fixed",inset:0,zIndex:199,background:"rgba(0,0,0,.35)",backdropFilter:"blur(2px)"}} onClick={onClose}/>
+      <div className="card" style={{position:"fixed",bottom:"calc(var(--bar-h) + 12px)",right:"16px",
+        padding:"16px",width:"240px",zIndex:200,boxShadow:"var(--shadow-md)",animation:"fadeIn .18s ease"}}>
+        {stackingRisk && (
+          <div style={{background:dark?"rgba(239,68,68,.12)":"rgba(254,226,226,.8)",border:"1px solid rgba(239,68,68,.35)",
+            borderRadius:"8px",padding:"8px 10px",marginBottom:"12px",fontSize:"11px",color:"#ef4444",lineHeight:1.4}}>
+            ⚠️ <strong>IOB alto: {totalIOB}U</strong>{pred60?` · +60min: ${pred60} mg/dL`:""}<br/>
+            <span style={{opacity:.8}}>Confirme se nova dose é necessária.</span>
+          </div>
+        )}
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"12px"}}>
+          <div style={{fontSize:"13px",fontWeight:700,color:"var(--accent)",display:"flex",alignItems:"center",gap:"6px"}}>
+            <IcoSyringe s={15} c="var(--accent)"/> Dose avulsa
+          </div>
+          <button onClick={onClose} aria-label="Fechar" style={{background:"none",border:"none",cursor:"pointer",
+            color:"var(--text3)",padding:"4px",display:"flex",alignItems:"center",borderRadius:"6px"}}>
+            <IcoX s={16} c="var(--text3)"/>
+          </button>
         </div>
-      )}
-      <button onClick={()=>setOpen(o=>!o)}
-        style={{width:"52px",height:"52px",borderRadius:"50%",background:open?"var(--surface)":"var(--accent)",border:open?"1px solid var(--border)":"none",color:open?"var(--text2)":"white",fontSize:open?"22px":"19px",cursor:"pointer",boxShadow:open?"var(--shadow-sm)":"0 4px 16px rgba(14,165,233,.45)",transition:"all .2s",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"var(--font)"}}>
-        {open?"×":"💉"}
-      </button>
-    </div>
+        <input value={dose} onChange={e=>setDose(e.target.value)} onKeyDown={e=>e.key==="Enter"&&sub()}
+          placeholder="Unidades (ex: 4)" type="number" inputMode="numeric" step="1" min="1" max="50" autoFocus
+          style={{width:"100%",background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"10px",
+            padding:"10px 12px",color:"var(--text)",fontSize:"22px",fontFamily:"var(--mono)",marginBottom:"8px",textAlign:"center"}}/>
+        <input value={note} onChange={e=>setNote(e.target.value)} onKeyDown={e=>e.key==="Enter"&&sub()} placeholder="Nota (opcional)"
+          style={{width:"100%",background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"10px",
+            padding:"10px 12px",color:"var(--text)",fontSize:"13px",marginBottom:"12px"}}/>
+        <button className="btn btn-primary" onClick={sub} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:"6px",padding:"11px"}}>
+          <IcoCheck s={15} c="white"/> Registrar dose
+        </button>
+      </div>
+    </>
   );
 }
 
 /* ── THEME TOGGLE ─────────────────────────────────────────────────────── */
 function ThemeToggle({dark,onToggle}) {
   return (
-    <button onClick={onToggle}
-      style={{background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"20px",padding:"5px 12px",color:"var(--text2)",fontSize:"12px",cursor:"pointer",fontFamily:"var(--font)",fontWeight:500,display:"flex",alignItems:"center",gap:"5px",boxShadow:"var(--shadow-sm)"}}>
-      {dark ? "☀️ Claro" : "🌙 Escuro"}
+    <button onClick={onToggle} aria-label={dark?"Mudar para modo claro":"Mudar para modo escuro"}
+      style={{background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"20px",
+        padding:"6px 10px",color:"var(--text2)",fontSize:"12px",cursor:"pointer",fontFamily:"var(--font)",
+        fontWeight:500,display:"flex",alignItems:"center",gap:"5px",boxShadow:"var(--shadow-sm)",
+        minHeight:"36px",touchAction:"manipulation"}}>
+      {dark ? <IcoSun s={15} c="var(--text2)"/> : <IcoMoon s={15} c="var(--text2)"/>}
+      <span>{dark ? "Claro" : "Escuro"}</span>
     </button>
   );
 }
@@ -1856,23 +2013,29 @@ function MealModal({
           {/* Pill drag handle */}
           <div style={{position:"absolute",top:"8px",left:"50%",transform:"translateX(-50%)",width:"36px",height:"4px",borderRadius:"2px",background:"var(--border)"}}/>
 
-          <div style={{fontSize:"14px",fontWeight:700,flex:1,color:"var(--text)"}}>🍽️ Refeição</div>
+          <div style={{fontSize:"14px",fontWeight:700,flex:1,color:"var(--text)",display:"flex",alignItems:"center",gap:"6px"}}>
+            <IcoUtensils s={15} c="var(--text)"/> Refeição
+          </div>
 
           {/* Botão histórico */}
           <button onClick={()=>setView(v=>v==="history"?"chat":"history")}
+            aria-label="Histórico"
             style={{
               background:view==="history"?"rgba(14,165,233,.12)":"var(--surface2)",
               border:`1px solid ${view==="history"?"var(--accent)":"var(--border)"}`,
-              borderRadius:"8px",padding:"5px 10px",fontSize:"11px",fontWeight:600,
+              borderRadius:"8px",padding:"6px 10px",fontSize:"11px",fontWeight:600,
               color:view==="history"?"var(--accent)":"var(--text2)",cursor:"pointer",
-              fontFamily:"var(--font)",marginRight:"8px"
+              fontFamily:"var(--font)",marginRight:"8px",display:"flex",alignItems:"center",
+              gap:"5px",minHeight:"36px",touchAction:"manipulation"
             }}>
-            📋 Histórico
+            <IcoHistory s={13} c={view==="history"?"var(--accent)":"var(--text2)"}/> Histórico
           </button>
 
-          <button onClick={onClose}
-            style={{background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"8px",width:"30px",height:"30px",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"16px",color:"var(--text2)"}}>
-            ×
+          <button onClick={onClose} aria-label="Fechar"
+            style={{background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"8px",
+              width:"36px",height:"36px",display:"flex",alignItems:"center",justifyContent:"center",
+              cursor:"pointer",touchAction:"manipulation"}}>
+            <IcoX s={16} c="var(--text2)"/>
           </button>
         </div>
 
@@ -1918,21 +2081,31 @@ function MealModal({
           {/* Input area */}
           <div style={{padding:"10px 14px 16px",borderTop:"1px solid var(--border)",background:"var(--surface)",flexShrink:0}}>
             <div style={{display:"flex",gap:"8px",alignItems:"flex-end",background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"14px",padding:"8px 8px 8px 14px"}}>
-              <button onClick={()=>fileRef.current?.click()}
-                style={{background:"rgba(14,165,233,.1)",border:"1px solid rgba(14,165,233,.2)",borderRadius:"10px",width:"36px",height:"36px",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"16px",flexShrink:0,color:"var(--accent)"}}>📎</button>
+              <button onClick={()=>fileRef.current?.click()} aria-label="Anexar foto"
+                style={{background:"rgba(14,165,233,.1)",border:"1px solid rgba(14,165,233,.2)",borderRadius:"10px",
+                  width:"40px",height:"40px",display:"flex",alignItems:"center",justifyContent:"center",
+                  cursor:"pointer",flexShrink:0,color:"var(--accent)",touchAction:"manipulation"}}>
+                <IcoClip s={17} c="var(--accent)"/>
+              </button>
               <input ref={fileRef} type="file" accept="image/*" multiple style={{display:"none"}} onChange={handleFile}/>
               <textarea ref={taRef} value={input} onChange={e=>setInput(e.target.value)} onKeyDown={onKey}
                 placeholder={loading ? "Aguardando resposta..." : "O que vai comer? Ex: arroz feijão frango"}
-                rows={1} style={{flex:1,background:"transparent",border:"none",outline:"none",color:"var(--text)",fontSize:"13.5px",lineHeight:"1.55",resize:"none",fontFamily:"var(--font)",padding:"6px 0",maxHeight:"110px",overflowY:"auto"}}
+                rows={1} style={{flex:1,background:"transparent",border:"none",outline:"none",color:"var(--text)",fontSize:"14px",lineHeight:"1.55",resize:"none",fontFamily:"var(--font)",padding:"6px 0",maxHeight:"110px",overflowY:"auto"}}
                 onInput={e=>{e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,110)+"px";}}/>
               <button onClick={()=>onSend()} disabled={!input.trim()&&!images.length}
-                className="btn btn-primary" style={{width:"36px",height:"36px",padding:"0",borderRadius:"10px",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"16px",fontWeight:700,flexShrink:0,
-                  opacity: loading ? 0.6 : 1}}>
-                {loading ? "⏳" : "↑"}
+                className="btn btn-primary" aria-label="Enviar"
+                style={{width:"40px",height:"40px",padding:"0",borderRadius:"10px",display:"flex",alignItems:"center",
+                  justifyContent:"center",fontWeight:700,flexShrink:0,opacity:loading?0.6:1,touchAction:"manipulation"}}>
+                {loading
+                  ? <div style={{width:"14px",height:"14px",border:"2px solid rgba(255,255,255,.3)",borderTopColor:"white",borderRadius:"50%",animation:"spin .7s linear infinite"}}/>
+                  : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
+                }
               </button>
             </div>
-            <div style={{textAlign:"center",fontSize:"10px",color:"var(--text3)",marginTop:"6px",fontWeight:500}}>
-              {loading ? "⏳ Processando — sua próxima mensagem será enviada automaticamente" : "📎 foto da refeição · Enter para enviar"}
+            <div style={{textAlign:"center",fontSize:"10px",color:"var(--text3)",marginTop:"6px",fontWeight:500,display:"flex",alignItems:"center",justifyContent:"center",gap:"4px"}}>
+              {loading
+                ? <><div style={{width:"8px",height:"8px",borderRadius:"50%",background:"var(--accent)",animation:"pulse 1.2s ease-in-out infinite"}}/> Processando...</>
+                : <><IcoClip s={11} c="var(--text3)"/> foto da refeição · Enter para enviar</>}
             </div>
           </div>
         </>)}
@@ -1946,6 +2119,7 @@ function App() {
   const [dark,setDark]       = useState(()=>lsGet(KEY_THEME)||false);
   const [tab,setTab]         = useState("chart");
   const [mealOpen,setMealOpen] = useState(false);
+  const [fabOpen,setFabOpen] = useState(false);
   const [msgs,setMsgs]       = useState([{role:"assistant",content:"Olá! 👋 Conectando ao sensor Libre...\n\nEnquanto isso, me diz o que vai comer.",time:fmtTime()}]);
   const [input,setInput]     = useState("");
   const [images,setImages]   = useState([]);
@@ -2395,49 +2569,39 @@ COB adicionado ao modelo. Previsões atualizadas.`,
     <ThemeCtx.Provider value={{dark,toggle:()=>setDark(d=>!d)}}>
       <div style={{height:"100vh",display:"flex",flexDirection:"column",background:"var(--bg)",position:"relative",overflow:"hidden"}}>
 
-        {/* HEADER */}
-        <div style={{padding:"8px 14px",background:"var(--surface)",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",gap:"8px",flexShrink:0,boxShadow:"var(--shadow-sm)"}}>
-          <div style={{width:"30px",height:"30px",borderRadius:"9px",background:"var(--accent)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"15px",flexShrink:0,boxShadow:"0 2px 8px rgba(14,165,233,.3)"}}>💉</div>
+        {/* HEADER — limpo: logo + biblioteca + offline + tema */}
+        <div style={{padding:"8px 14px",background:"var(--surface)",borderBottom:"1px solid var(--border)",
+          display:"flex",alignItems:"center",gap:"8px",flexShrink:0,boxShadow:"var(--shadow-sm)"}}>
+          <div style={{width:"32px",height:"32px",borderRadius:"10px",background:"var(--accent)",
+            display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,
+            boxShadow:"0 2px 8px rgba(14,165,233,.3)"}}>
+            <IcoSyringe s={17} c="white"/>
+          </div>
           <div style={{flex:1,minWidth:0}}>
             <div style={{fontWeight:800,fontSize:"14px",color:"var(--text)"}}>Assistente Bolus</div>
             <div style={{fontSize:"9px",color:"var(--text3)",fontWeight:500}}>T2 · Libre 2 · Fiasp</div>
           </div>
-          {/* Botões de ação — movidos do TabBar para o header */}
-          <button onClick={()=>setMealOpen(true)}
-            style={{display:"flex",alignItems:"center",gap:"4px",padding:"5px 9px",background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"8px",color:"var(--text2)",fontSize:"11px",fontWeight:600,cursor:"pointer",fontFamily:"var(--font)",flexShrink:0}}>
-            🍽️ <span style={{fontSize:"11px"}}>Refeição</span>
+          <button onClick={()=>setTab(t=>t==="library"?"chart":"library")} aria-label="Biblioteca de Alimentos"
+            style={{display:"flex",alignItems:"center",gap:"5px",padding:"6px 10px",
+              background:tab==="library"?"var(--accent)":"var(--surface2)",
+              border:`1px solid ${tab==="library"?"var(--accent)":"var(--border)"}`,
+              borderRadius:"8px",color:tab==="library"?"white":"var(--text2)",
+              fontSize:"11px",fontWeight:600,cursor:"pointer",fontFamily:"var(--font)",flexShrink:0,
+              minHeight:"36px",touchAction:"manipulation"}}>
+            <IcoBook s={14} c={tab==="library"?"white":"var(--text2)"}/>
+            <span>Biblioteca</span>
           </button>
-          <button onClick={()=>setTab(t=>t==="library"?"chart":"library")}
-            style={{display:"flex",alignItems:"center",gap:"4px",padding:"5px 9px",background:tab==="library"?"var(--accent)":"var(--surface2)",border:`1px solid ${tab==="library"?"var(--accent)":"var(--border)"}`,borderRadius:"8px",color:tab==="library"?"white":"var(--text2)",fontSize:"11px",fontWeight:600,cursor:"pointer",fontFamily:"var(--font)",flexShrink:0}}>
-            📚 <span style={{fontSize:"11px"}}>Biblioteca</span>
-          </button>
-          {/* T2: badge offline */}
           {!isOnline && (
-            <div style={{background:"rgba(239,68,68,.12)",border:"1px solid rgba(239,68,68,.35)",borderRadius:"20px",padding:"3px 8px",fontSize:"10px",fontWeight:700,color:"#ef4444",whiteSpace:"nowrap",flexShrink:0}}>
-              📡
+            <div title="Sem conexão" style={{background:"rgba(239,68,68,.12)",border:"1px solid rgba(239,68,68,.35)",
+              borderRadius:"20px",padding:"5px 7px",flexShrink:0,display:"flex",alignItems:"center"}}>
+              <IcoWifiOff s={14} c="#ef4444"/>
             </div>
           )}
           <ThemeToggle dark={dark} onToggle={()=>setDark(d=>!d)}/>
         </div>
 
-        {/* S4: alerta de variabilidade rápida — |velocity| >= 2.5 mg/dL/min */}
-        {glucose?.glucose && Math.abs(glucose._velocity||0) >= 2.5 && (
-          <div style={{
-            padding:"6px 14px",
-            background: (glucose._velocity||0) > 0 ? (dark?"rgba(202,138,4,.12)":"rgba(254,249,195,.9)") : (dark?"rgba(239,68,68,.12)":"rgba(254,226,226,.9)"),
-            borderBottom:`1px solid ${(glucose._velocity||0) > 0 ? "rgba(202,138,4,.3)" : "rgba(239,68,68,.3)"}`,
-            display:"flex",alignItems:"center",gap:"8px",flexShrink:0
-          }}>
-            <span style={{fontSize:"13px"}}>{(glucose._velocity||0) > 0 ? "📈" : "📉"}</span>
-            <span style={{fontSize:"11px",fontWeight:700,color:(glucose._velocity||0) > 0 ? "#ca8a04" : "#ef4444"}}>
-              Variação rápida: {(glucose._velocity||0) > 0 ? "+" : ""}{glucose._velocity} mg/dL/min
-            </span>
-            <span style={{fontSize:"10px",color:"var(--text3)"}}>— acompanhe de perto</span>
-          </div>
-        )}
-
-        {/* ── ALERT BANNERS — fluxo normal, topo da tela ── */}
-        <AlertBanner
+        {/* ── ALERT QUEUE — 1 alerta por vez, auto-dismiss 2s, cooldown 2min ── */}
+        <AlertQueue
           reading={glucose}
           predictions={predictions}
           history={history}
@@ -2457,14 +2621,22 @@ COB adicionado ao modelo. Previsões atualizadas.`,
         />
 
         {/* GLICEMIA + BIBLIOTECA — chart sempre visível, library como overlay */}
-        <div style={{flex:1,position:"relative",minHeight:0,overflow:"hidden",display:"flex",flexDirection:"column"}}>
+        <div style={{flex:1,position:"relative",minHeight:0,overflow:"hidden",display:"flex",flexDirection:"column",
+          paddingBottom:"var(--bar-h)"}}>
           <GlucoseChart glucoseData={glucose} history={history} activeDoses={doses} onRowsUpdate={r=>chartRowsRef.current=r}/>
           {tab==="library" && (
             <div style={{position:"absolute",inset:0,background:"var(--bg)",zIndex:10,overflow:"auto"}}>
               {/* header da biblioteca */}
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px 6px",borderBottom:"1px solid var(--border)",background:"var(--surface)",flexShrink:0}}>
-                <div style={{fontSize:"13px",fontWeight:700,color:"var(--text)"}}>📚 Biblioteca de Alimentos</div>
-                <button onClick={()=>setTab("chart")} style={{background:"none",border:"none",cursor:"pointer",color:"var(--text3)",fontSize:"20px",lineHeight:1,padding:"0 4px"}}>×</button>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px 6px",
+                borderBottom:"1px solid var(--border)",background:"var(--surface)",flexShrink:0}}>
+                <div style={{fontSize:"13px",fontWeight:700,color:"var(--text)",display:"flex",alignItems:"center",gap:"6px"}}>
+                  <IcoBook s={15} c="var(--text)"/> Biblioteca de Alimentos
+                </div>
+                <button onClick={()=>setTab("chart")} aria-label="Fechar biblioteca"
+                  style={{background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"8px",
+                    width:"36px",height:"36px",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
+                  <IcoX s={16} c="var(--text3)"/>
+                </button>
               </div>
               {(()=>{
                 const totalIOBNow = calcTotalIOB(filterDoses(doses));
@@ -2529,8 +2701,25 @@ COB adicionado ao modelo. Previsões atualizadas.`,
         {(()=>{
           const totalIOBNow = calcTotalIOB(filterDoses(doses));
           const pred60val   = predictions.find(p=>p.t===60)?.value;
-          return <FAB onRegisterDose={(u,n)=>registerDose(u,null,"Dose avulsa",n)} totalIOB={totalIOBNow} pred60={pred60val}/>;
+          return <FAB onRegisterDose={(u,n)=>registerDose(u,null,"Dose avulsa",n)} totalIOB={totalIOBNow} pred60={pred60val}
+            open={fabOpen} onClose={()=>setFabOpen(false)}/>;
         })()}
+
+        {/* ── BOTTOM ACTION BAR — barra fixa com ações principais ── */}
+        <div style={{position:"fixed",bottom:0,left:0,right:0,height:"var(--bar-h)",
+          background:"var(--surface)",borderTop:"1px solid var(--border)",
+          display:"flex",alignItems:"stretch",zIndex:100,
+          boxShadow:"0 -4px 20px rgba(0,0,0,.10)"}}>
+          <button className="bottom-bar-btn" onClick={()=>setMealOpen(true)} aria-label="Refeição">
+            <IcoUtensils s={22} c="var(--text2)"/>
+            <span>Refeição</span>
+          </button>
+          <div style={{width:"1px",background:"var(--border)",margin:"10px 0"}}/>
+          <button className="bottom-bar-btn" onClick={()=>setFabOpen(true)} aria-label="Dose avulsa">
+            <IcoSyringe s={22} c="var(--text2)"/>
+            <span>Dose avulsa</span>
+          </button>
+        </div>
       </div>
     </ThemeCtx.Provider>
   );
