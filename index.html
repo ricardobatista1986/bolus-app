@@ -2077,14 +2077,14 @@ function SettingsModal({open, onClose}) {
 
   if (!open) return null;
   return (
-    <>
-      <div style={{position:"fixed",inset:0,zIndex:299,background:"rgba(0,0,0,.5)",backdropFilter:"blur(3px)"}}
-        onClick={onClose}/>
+    /* wrapper único: click no fundo fecha; stopPropagation no card evita fechar ao interagir */
+    <div onClick={onClose}
+      style={{position:"fixed",inset:0,zIndex:299,background:"rgba(0,0,0,.55)",
+        backdropFilter:"blur(3px)",display:"flex",alignItems:"flex-end"}}>
       <div onClick={e=>e.stopPropagation()}
-        style={{position:"fixed",bottom:0,left:0,right:0,zIndex:300,
-          borderRadius:"20px 20px 0 0",padding:0,maxHeight:"90vh",display:"flex",flexDirection:"column",
-          background:"var(--surface)",boxShadow:"0 -4px 24px rgba(0,0,0,.3)",animation:"alertIn .2s ease",
-          border:"1px solid var(--border)"}}>
+        style={{width:"100%",background:"var(--surface)",borderRadius:"20px 20px 0 0",
+          maxHeight:"90vh",display:"flex",flexDirection:"column",
+          boxShadow:"0 -4px 24px rgba(0,0,0,.3)",border:"1px solid var(--border)"}}>
 
         {/* Header */}
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",
@@ -2092,13 +2092,14 @@ function SettingsModal({open, onClose}) {
           <div style={{display:"flex",alignItems:"center",gap:"8px",fontSize:"15px",fontWeight:700,color:"var(--text)"}}>
             <IcoGear s={16} c="var(--accent)"/> Configurações
           </div>
-          <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",
-            padding:"8px",display:"flex",alignItems:"center",touchAction:"manipulation"}}>
+          <button type="button" onClick={onClose}
+            style={{background:"none",border:"none",cursor:"pointer",padding:"8px",
+              display:"flex",alignItems:"center",touchAction:"manipulation"}}>
             <IcoX s={18} c="var(--text3)"/>
           </button>
         </div>
 
-        {/* Scroll body */}
+        {/* Body scrollável */}
         <div style={{overflow:"auto",flex:1,padding:"0 16px 8px",WebkitOverflowScrolling:"touch"}}>
 
           {/* ICR Ranges */}
@@ -2126,7 +2127,7 @@ function SettingsModal({open, onClose}) {
                 <span style={{fontSize:"12px",color:"var(--text2)",flex:1}}>1U para cada</span>
                 {icrInput(r.icr, v=>updRange(r.id,"icr",v))}
                 <span style={{fontSize:"12px",color:"var(--text2)"}}>g CHO</span>
-                <button
+                <button type="button"
                   onClick={()=>delRange(r.id)}
                   style={{background:draft.icrRanges.length<=1?"none":"rgba(239,68,68,.1)",
                     border:`1px solid ${draft.icrRanges.length<=1?"transparent":"rgba(239,68,68,.35)"}`,
@@ -2159,11 +2160,12 @@ function SettingsModal({open, onClose}) {
               </div>
               {addErr && <div style={{fontSize:"11px",color:"#ef4444",marginBottom:"8px",fontWeight:600}}>{addErr}</div>}
               <div style={{display:"flex",gap:"8px"}}>
-                <button onClick={()=>{setAdding(false);setAddErr("");}} className="btn btn-ghost"
+                <button type="button" onClick={()=>{setAdding(false);setAddErr("");}}
+                  className="btn btn-ghost"
                   style={{flex:1,padding:"10px",fontSize:"13px",touchAction:"manipulation"}}>
                   Cancelar
                 </button>
-                <button onClick={confirmAdd} className="btn btn-primary"
+                <button type="button" onClick={confirmAdd} className="btn btn-primary"
                   style={{flex:2,padding:"10px",fontSize:"13px",touchAction:"manipulation",
                     display:"flex",alignItems:"center",justifyContent:"center",gap:"4px"}}>
                   <IcoCheck s={13} c="white"/> Adicionar
@@ -2171,7 +2173,7 @@ function SettingsModal({open, onClose}) {
               </div>
             </div>
           ) : (
-            <button onClick={()=>setAdding(true)} touchAction="manipulation"
+            <button type="button" onClick={()=>setAdding(true)}
               style={{width:"100%",padding:"11px",borderRadius:"9px",
                 border:"1px dashed var(--border)",background:"transparent",
                 color:"var(--accent)",fontSize:"13px",fontWeight:600,cursor:"pointer",
@@ -2193,11 +2195,12 @@ function SettingsModal({open, onClose}) {
         {/* Footer */}
         <div style={{padding:"12px 16px 28px",display:"flex",gap:"8px",flexShrink:0,
           borderTop:"1px solid var(--border)"}}>
-          <button onClick={onClose} className="btn btn-ghost"
+          <button type="button" onClick={onClose} className="btn btn-ghost"
             style={{flex:1,padding:"13px",fontSize:"14px",touchAction:"manipulation"}}>
             Cancelar
           </button>
-          <button onClick={save} disabled={!draft.icrRanges.length} className="btn btn-primary"
+          <button type="button" onClick={save} disabled={!draft.icrRanges.length}
+            className="btn btn-primary"
             style={{flex:2,padding:"13px",fontSize:"14px",touchAction:"manipulation",
               display:"flex",alignItems:"center",justifyContent:"center",gap:"6px",
               opacity:draft.icrRanges.length?1:.4}}>
@@ -2205,7 +2208,7 @@ function SettingsModal({open, onClose}) {
           </button>
         </div>
       </div>
-    </>
+    </div>
   );
 }
 
