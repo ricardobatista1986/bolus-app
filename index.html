@@ -1985,187 +1985,220 @@ const SettingsCtx = createContext({ settings: DEFAULT_SETTINGS, setSettings: ()=
 function SettingsModal({open, onClose}) {
   const {dark} = useContext(ThemeCtx);
   const {settings, setSettings} = useContext(SettingsCtx);
-  const [draft, setDraft] = useState({...settings, icrRanges:[...settings.icrRanges.map(r=>({...r}))]});
+
+  // Draft como strings para evitar congelamento de inputs controlados
+  const toStr = (s) => ({
+    ...s,
+    isf:         String(s.isf),
+    corrTarget:  String(s.corrTarget),
+    corrPostMeal:String(s.corrPostMeal),
+    icrRanges:   s.icrRanges.map(r=>({...r, icr:String(r.icr)})),
+  });
+  const [draft, setDraft] = useState(()=>toStr(settings));
   const [adding, setAdding] = useState(false);
-  const [newRange, setNewRange] = useState({start:"00:00",end:"06:00",icr:5});
+  const [newRange, setNewRange] = useState({start:"06:00",end:"18:00",icr:"5"});
   const [addErr, setAddErr] = useState("");
 
   useEffect(()=>{
-    if(open){
-      setDraft({...settings, icrRanges:[...settings.icrRanges.map(r=>({...r}))]});
-      setAdding(false); setAddErr("");
-    }
+    if(open){ setDraft(toStr(settings)); setAdding(false); setAddErr(""); setNewRange({start:"06:00",end:"18:00",icr:"5"}); }
   },[open]);
 
   const updRange = (id, key, val) =>
-    setDraft(d=>({...d, icrRanges: d.icrRanges.map(r=>r.id===id?{...r,[key]:val}:r)}));
+    setDraft(d=>({...d, icrRanges:d.icrRanges.map(r=>r.id===id?{...r,[key]:val}:r)}));
 
-  const delRange = (id) =>
-    setDraft(d=>({...d, icrRanges: d.icrRanges.filter(r=>r.id!==id)}));
+  const delRange = (id) => {
+    if(draft.icrRanges.length<=1) return;
+    setDraft(d=>({...d, icrRanges:d.icrRanges.filter(r=>r.id!==id)}));
+  };
 
   const confirmAdd = () => {
-    if(!/^\d{2}:\d{2}$/.test(newRange.start)||!/^\d{2}:\d{2}$/.test(newRange.end))
-      return setAddErr("Horário inválido (HH:MM)");
-    if(newRange.start===newRange.end)
-      return setAddErr("Início e fim não podem ser iguais");
-    if(!newRange.icr||newRange.icr<1||newRange.icr>30)
-      return setAddErr("ICR deve ser entre 1 e 30");
-    setDraft(d=>({...d, icrRanges:[...d.icrRanges,{...newRange,id:Date.now().toString()}]}));
-    setAdding(false); setAddErr(""); setNewRange({start:"00:00",end:"06:00",icr:5});
+    const icr = parseInt(newRange.icr);
+    if(newRange.start===newRange.end) return setAddErr("Início e fim iguais");
+    if(isNaN(icr)||icr<1||icr>30) return setAddErr("ICR: valor entre 1 e 30");
+    setDraft(d=>({...d, icrRanges:[...d.icrRanges,{...newRange,icr:String(icr),id:Date.now().toString()}]}));
+    setAdding(false); setAddErr(""); setNewRange({start:"06:00",end:"18:00",icr:"5"});
   };
 
   const save = () => {
     if(!draft.icrRanges.length) return;
-    appSettings = {...draft};
-    setSettings(draft);
-    lsSet(KEY_SETTINGS, draft);
+    const saved = {
+      ...draft,
+      isf:          parseFloat(draft.isf)||30,
+      corrTarget:   parseFloat(draft.corrTarget)||110,
+      corrPostMeal: parseFloat(draft.corrPostMeal)||160,
+      icrRanges:    draft.icrRanges.map(r=>({...r, icr:parseInt(r.icr)||5})),
+    };
+    appSettings = saved;
+    setSettings(saved);
+    lsSet(KEY_SETTINGS, saved);
     onClose();
   };
 
-  const numField = (label, key, unit, min, max) => (
+  // Select de horário: opções a cada 30min (00:00–23:30)
+  const timeOpts = [];
+  for(let h=0;h<24;h++) for(let m of [0,30])
+    timeOpts.push(`${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`);
+
+  const timeSelect = (val, onChange) => (
+    <select value={val} onChange={e=>onChange(e.target.value)}
+      style={{background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"8px",
+        padding:"8px 6px",color:"var(--text)",fontSize:"14px",fontFamily:"var(--mono)",
+        flex:1,touchAction:"manipulation",cursor:"pointer"}}>
+      {timeOpts.map(t=><option key={t} value={t}>{t}</option>)}
+    </select>
+  );
+
+  const icrInput = (val, onChange) => (
+    <input type="text" inputMode="numeric" value={val}
+      onChange={e=>onChange(e.target.value.replace(/[^0-9]/g,""))}
+      style={{width:"48px",background:"var(--surface2)",border:"1px solid var(--border)",
+        borderRadius:"8px",padding:"8px 4px",color:"var(--text)",fontSize:"16px",
+        fontFamily:"var(--mono)",textAlign:"center",touchAction:"manipulation"}}/>
+  );
+
+  const numInput = (draftKey, min, max) => (
+    <input type="text" inputMode="numeric" value={draft[draftKey]}
+      onChange={e=>setDraft(d=>({...d,[draftKey]:e.target.value.replace(/[^0-9.]/g,"")}))}
+      style={{width:"72px",background:"var(--surface2)",border:"1px solid var(--border)",
+        borderRadius:"8px",padding:"7px 10px",color:"var(--text)",fontSize:"16px",
+        fontFamily:"var(--mono)",textAlign:"center",touchAction:"manipulation"}}/>
+  );
+
+  const numField = (label, key, unit) => (
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",
-      padding:"10px 0",borderBottom:"1px solid var(--border)"}}>
-      <div>
+      padding:"11px 0",borderBottom:"1px solid var(--border)"}}>
+      <div style={{flex:1,paddingRight:"10px"}}>
         <div style={{fontSize:"13px",fontWeight:600,color:"var(--text)"}}>{label}</div>
         <div style={{fontSize:"10px",color:"var(--text3)",marginTop:"1px"}}>{unit}</div>
       </div>
-      <input type="number" inputMode="numeric" value={draft[key]}
-        onChange={e=>{const v=parseFloat(e.target.value);if(!isNaN(v)&&v>=min&&v<=max)setDraft(d=>({...d,[key]:v}));}}
-        style={{width:"72px",background:"var(--surface2)",border:"1px solid var(--border)",
-          borderRadius:"8px",padding:"7px 10px",color:"var(--text)",fontSize:"16px",
-          fontFamily:"var(--mono)",textAlign:"center"}}/>
+      {numInput(key)}
     </div>
-  );
-
-  const timeInput = (val, onChange, style={}) => (
-    <input type="time" value={val} onChange={e=>onChange(e.target.value)}
-      style={{background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"8px",
-        padding:"6px 8px",color:"var(--text)",fontSize:"14px",fontFamily:"var(--mono)",
-        width:"88px",textAlign:"center",...style}}/>
   );
 
   if (!open) return null;
   return (
     <>
-      <div style={{position:"fixed",inset:0,zIndex:299,background:"rgba(0,0,0,.5)",backdropFilter:"blur(3px)"}} onClick={onClose}/>
-      <div className="card" style={{position:"fixed",bottom:0,left:0,right:0,zIndex:300,
-        borderRadius:"20px 20px 0 0",padding:0,maxHeight:"88vh",display:"flex",flexDirection:"column",
-        boxShadow:"0 -4px 24px rgba(0,0,0,.3)",animation:"alertIn .2s ease"}}>
+      <div style={{position:"fixed",inset:0,zIndex:299,background:"rgba(0,0,0,.5)",backdropFilter:"blur(3px)"}}
+        onClick={onClose}/>
+      <div onClick={e=>e.stopPropagation()}
+        style={{position:"fixed",bottom:0,left:0,right:0,zIndex:300,
+          borderRadius:"20px 20px 0 0",padding:0,maxHeight:"90vh",display:"flex",flexDirection:"column",
+          background:"var(--surface)",boxShadow:"0 -4px 24px rgba(0,0,0,.3)",animation:"alertIn .2s ease",
+          border:"1px solid var(--border)"}}>
 
-        {/* Header sticky */}
+        {/* Header */}
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",
-          padding:"16px 16px 12px",borderBottom:"1px solid var(--border)",
-          background:"var(--surface)",borderRadius:"20px 20px 0 0",flexShrink:0}}>
+          padding:"16px 16px 12px",borderBottom:"1px solid var(--border)",flexShrink:0}}>
           <div style={{display:"flex",alignItems:"center",gap:"8px",fontSize:"15px",fontWeight:700,color:"var(--text)"}}>
             <IcoGear s={16} c="var(--accent)"/> Configurações
           </div>
           <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",
-            padding:"4px",display:"flex",alignItems:"center"}}>
+            padding:"8px",display:"flex",alignItems:"center",touchAction:"manipulation"}}>
             <IcoX s={18} c="var(--text3)"/>
           </button>
         </div>
 
         {/* Scroll body */}
-        <div style={{overflow:"auto",flex:1,padding:"0 16px 8px"}}>
+        <div style={{overflow:"auto",flex:1,padding:"0 16px 8px",WebkitOverflowScrolling:"touch"}}>
 
           {/* ICR Ranges */}
           <div style={{fontSize:"11px",fontWeight:700,color:"var(--text3)",textTransform:"uppercase",
-            letterSpacing:".06em",padding:"14px 0 8px"}}>
-            ICR — Relação insulina/carboidrato
-          </div>
+            letterSpacing:".06em",padding:"14px 0 8px"}}>ICR — Relação insulina/carboidrato</div>
 
-          {draft.icrRanges.length === 0 && (
+          {draft.icrRanges.length===0 && (
             <div style={{fontSize:"12px",color:"var(--text3)",padding:"8px 0",fontStyle:"italic"}}>
-              Nenhuma faixa configurada. Adicione ao menos uma.
+              Nenhuma faixa. Adicione ao menos uma.
             </div>
           )}
 
-          {draft.icrRanges.map((r, i) => (
+          {draft.icrRanges.map((r)=>(
             <div key={r.id} style={{background:"var(--surface2)",borderRadius:"10px",
-              padding:"10px 12px",marginBottom:"8px",border:"1px solid var(--border)"}}>
-              <div style={{display:"flex",alignItems:"center",gap:"6px",flexWrap:"wrap"}}>
-                <span style={{fontSize:"11px",color:"var(--text3)",flexShrink:0}}>De</span>
-                {timeInput(r.start, v=>updRange(r.id,"start",v))}
+              padding:"12px",marginBottom:"8px",border:"1px solid var(--border)"}}>
+              {/* Horário */}
+              <div style={{display:"flex",alignItems:"center",gap:"6px",marginBottom:"10px"}}>
+                <span style={{fontSize:"11px",color:"var(--text3)",flexShrink:0,width:"22px"}}>De</span>
+                {timeSelect(r.start, v=>updRange(r.id,"start",v))}
                 <span style={{fontSize:"11px",color:"var(--text3)",flexShrink:0}}>até</span>
-                {timeInput(r.end,   v=>updRange(r.id,"end",v))}
-                <div style={{display:"flex",alignItems:"center",gap:"4px",marginLeft:"auto"}}>
-                  <span style={{fontSize:"11px",color:"var(--text3)",flexShrink:0}}>1U /</span>
-                  <input type="number" inputMode="numeric" value={r.icr} min={1} max={30}
-                    onChange={e=>{const v=parseInt(e.target.value);if(!isNaN(v)&&v>=1&&v<=30)updRange(r.id,"icr",v);}}
-                    style={{width:"50px",background:"var(--surface)",border:"1px solid var(--border)",
-                      borderRadius:"8px",padding:"6px 6px",color:"var(--text)",fontSize:"16px",
-                      fontFamily:"var(--mono)",textAlign:"center"}}/>
-                  <span style={{fontSize:"11px",color:"var(--text3)",flexShrink:0}}>g</span>
-                  <button onClick={()=>delRange(r.id)} disabled={draft.icrRanges.length<=1}
-                    title="Excluir faixa"
-                    style={{background:"none",border:"none",cursor:draft.icrRanges.length<=1?"not-allowed":"pointer",
-                      padding:"4px",display:"flex",alignItems:"center",opacity:draft.icrRanges.length<=1?.3:1,
-                      marginLeft:"4px"}}>
-                    <IcoTrash s={15} c="#ef4444"/>
-                  </button>
-                </div>
+                {timeSelect(r.end, v=>updRange(r.id,"end",v))}
+              </div>
+              {/* ICR + delete */}
+              <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
+                <span style={{fontSize:"12px",color:"var(--text2)",flex:1}}>1U para cada</span>
+                {icrInput(r.icr, v=>updRange(r.id,"icr",v))}
+                <span style={{fontSize:"12px",color:"var(--text2)"}}>g CHO</span>
+                <button
+                  onClick={()=>delRange(r.id)}
+                  style={{background:draft.icrRanges.length<=1?"none":"rgba(239,68,68,.1)",
+                    border:`1px solid ${draft.icrRanges.length<=1?"transparent":"rgba(239,68,68,.35)"}`,
+                    borderRadius:"8px",padding:"7px 10px",cursor:draft.icrRanges.length<=1?"default":"pointer",
+                    display:"flex",alignItems:"center",opacity:draft.icrRanges.length<=1?.25:1,
+                    touchAction:"manipulation",flexShrink:0}}>
+                  <IcoTrash s={14} c="#ef4444"/>
+                </button>
               </div>
             </div>
           ))}
 
-          {/* Add range form */}
+          {/* Adicionar faixa */}
           {adding ? (
-            <div style={{background:dark?"rgba(14,165,233,.08)":"rgba(14,165,233,.06)",borderRadius:"10px",
+            <div style={{background:dark?"rgba(14,165,233,.08)":"rgba(14,165,233,.05)",borderRadius:"10px",
               padding:"12px",border:"1px dashed rgba(14,165,233,.4)",marginBottom:"8px"}}>
-              <div style={{fontSize:"12px",fontWeight:600,color:"var(--accent)",marginBottom:"10px"}}>
+              <div style={{fontSize:"12px",fontWeight:700,color:"var(--accent)",marginBottom:"10px"}}>
                 Nova faixa
               </div>
-              <div style={{display:"flex",alignItems:"center",gap:"6px",flexWrap:"wrap",marginBottom:"8px"}}>
-                <span style={{fontSize:"11px",color:"var(--text3)"}}>De</span>
-                {timeInput(newRange.start, v=>setNewRange(r=>({...r,start:v})))}
-                <span style={{fontSize:"11px",color:"var(--text3)"}}>até</span>
-                {timeInput(newRange.end,   v=>setNewRange(r=>({...r,end:v})))}
-                <div style={{display:"flex",alignItems:"center",gap:"4px",marginLeft:"auto"}}>
-                  <span style={{fontSize:"11px",color:"var(--text3)"}}>1U /</span>
-                  <input type="number" inputMode="numeric" value={newRange.icr} min={1} max={30}
-                    onChange={e=>{const v=parseInt(e.target.value);if(!isNaN(v))setNewRange(r=>({...r,icr:v}));}}
-                    style={{width:"50px",background:"var(--surface)",border:"1px solid var(--border)",
-                      borderRadius:"8px",padding:"6px",color:"var(--text)",fontSize:"16px",
-                      fontFamily:"var(--mono)",textAlign:"center"}}/>
-                  <span style={{fontSize:"11px",color:"var(--text3)"}}>g</span>
-                </div>
+              <div style={{display:"flex",alignItems:"center",gap:"6px",marginBottom:"10px"}}>
+                <span style={{fontSize:"11px",color:"var(--text3)",flexShrink:0,width:"22px"}}>De</span>
+                {timeSelect(newRange.start, v=>setNewRange(r=>({...r,start:v})))}
+                <span style={{fontSize:"11px",color:"var(--text3)",flexShrink:0}}>até</span>
+                {timeSelect(newRange.end, v=>setNewRange(r=>({...r,end:v})))}
               </div>
-              {addErr && <div style={{fontSize:"11px",color:"#ef4444",marginBottom:"8px"}}>{addErr}</div>}
+              <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"10px"}}>
+                <span style={{fontSize:"12px",color:"var(--text2)",flex:1}}>1U para cada</span>
+                {icrInput(newRange.icr, v=>setNewRange(r=>({...r,icr:v})))}
+                <span style={{fontSize:"12px",color:"var(--text2)"}}>g CHO</span>
+              </div>
+              {addErr && <div style={{fontSize:"11px",color:"#ef4444",marginBottom:"8px",fontWeight:600}}>{addErr}</div>}
               <div style={{display:"flex",gap:"8px"}}>
                 <button onClick={()=>{setAdding(false);setAddErr("");}} className="btn btn-ghost"
-                  style={{flex:1,padding:"8px",fontSize:"12px"}}>Cancelar</button>
+                  style={{flex:1,padding:"10px",fontSize:"13px",touchAction:"manipulation"}}>
+                  Cancelar
+                </button>
                 <button onClick={confirmAdd} className="btn btn-primary"
-                  style={{flex:2,padding:"8px",fontSize:"12px",display:"flex",alignItems:"center",justifyContent:"center",gap:"4px"}}>
+                  style={{flex:2,padding:"10px",fontSize:"13px",touchAction:"manipulation",
+                    display:"flex",alignItems:"center",justifyContent:"center",gap:"4px"}}>
                   <IcoCheck s={13} c="white"/> Adicionar
                 </button>
               </div>
             </div>
           ) : (
-            <button onClick={()=>setAdding(true)}
-              style={{width:"100%",padding:"9px",borderRadius:"9px",border:"1px dashed var(--border)",
-                background:"transparent",color:"var(--accent)",fontSize:"12px",fontWeight:600,
-                cursor:"pointer",fontFamily:"var(--font)",display:"flex",alignItems:"center",
+            <button onClick={()=>setAdding(true)} touchAction="manipulation"
+              style={{width:"100%",padding:"11px",borderRadius:"9px",
+                border:"1px dashed var(--border)",background:"transparent",
+                color:"var(--accent)",fontSize:"13px",fontWeight:600,cursor:"pointer",
+                fontFamily:"var(--font)",display:"flex",alignItems:"center",
                 justifyContent:"center",gap:"6px",marginBottom:"4px",touchAction:"manipulation"}}>
               + Adicionar faixa
             </button>
           )}
 
-          {/* ISF + Alvos */}
+          {/* Correção */}
           <div style={{fontSize:"11px",fontWeight:700,color:"var(--text3)",textTransform:"uppercase",
             letterSpacing:".06em",padding:"14px 0 4px"}}>Correção</div>
-          {numField("ISF — sensibilidade",  "isf",          "mg/dL por unidade de insulina",        10, 80)}
-          {numField("Alvo padrão",           "corrTarget",   "mg/dL — fora do período pós-prandial", 80, 160)}
-          {numField("Alvo pós-prandial",     "corrPostMeal", "mg/dL — primeiras 2h após dose",       100, 220)}
+          {numField("ISF — sensibilidade",  "isf",          "mg/dL por unidade de insulina")}
+          {numField("Alvo padrão",           "corrTarget",   "mg/dL — fora do período pós-prandial")}
+          {numField("Alvo pós-prandial",     "corrPostMeal", "mg/dL — primeiras 2h após dose")}
+          <div style={{height:"16px"}}/>
         </div>
 
         {/* Footer */}
         <div style={{padding:"12px 16px 28px",display:"flex",gap:"8px",flexShrink:0,
-          borderTop:"1px solid var(--border)",background:"var(--surface)"}}>
-          <button onClick={onClose} className="btn btn-ghost" style={{flex:1,padding:"12px",fontSize:"14px"}}>
+          borderTop:"1px solid var(--border)"}}>
+          <button onClick={onClose} className="btn btn-ghost"
+            style={{flex:1,padding:"13px",fontSize:"14px",touchAction:"manipulation"}}>
             Cancelar
           </button>
           <button onClick={save} disabled={!draft.icrRanges.length} className="btn btn-primary"
-            style={{flex:2,padding:"12px",fontSize:"14px",
+            style={{flex:2,padding:"13px",fontSize:"14px",touchAction:"manipulation",
               display:"flex",alignItems:"center",justifyContent:"center",gap:"6px",
               opacity:draft.icrRanges.length?1:.4}}>
             <IcoCheck s={15} c="white"/> Salvar
