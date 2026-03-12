@@ -185,6 +185,10 @@ const IcoGear = ({s=18,c="currentColor"}) => <SvgIco size={s} color={c}>
   <circle cx="12" cy="12" r="3"/>
   <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
 </SvgIco>;
+const IcoTrash = ({s=18,c="currentColor"}) => <SvgIco size={s} color={c}>
+  <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
+  <path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+</SvgIco>;
 
 /* ── CONSTANTS ─────────────────────────────────────────────────────────── */
 const SUPABASE_URL   = "https://sfsutycytyonznhwtfkf.supabase.co";
@@ -207,15 +211,46 @@ const KEY_SETTINGS  = "bolus-settings-v1";
 // food_library e prediction_validations → Supabase (sem localStorage)
 
 const DEFAULT_SETTINGS = {
-  icrManha:        5,   // g CHO/U  06:00–18:00
-  icrNoiteSemana:  6,   // g CHO/U  18:00–23:00 dias úteis
-  icrNoiteFDS:     5,   // g CHO/U  18:00–23:00 fim de semana
-  isf:            30,   // mg/dL/U
-  corrTarget:    110,   // alvo correção padrão
-  corrPostMeal:  160,   // alvo pós-prandial (< 2h)
+  icrRanges: [
+    { id: "1", start: "06:00", end: "18:00", icr: 5 },
+    { id: "2", start: "18:00", end: "23:00", icr: 6 },
+  ],
+  isf:          30,   // mg/dL/U
+  corrTarget:   110,  // alvo correção padrão
+  corrPostMeal: 160,  // alvo pós-prandial (< 2h)
 };
 // Singleton mutable usado pelas funções puras (fora do React)
 let appSettings = { ...DEFAULT_SETTINGS };
+
+// Migração de formato antigo (icrManha/icrNoiteSemana/icrNoiteFDS)
+const migrateSettings = (raw) => {
+  if (!raw) return null;
+  if (raw.icrRanges) return { ...DEFAULT_SETTINGS, ...raw };
+  // formato legado → converter
+  return {
+    icrRanges: [
+      { id: "1", start: "06:00", end: "18:00", icr: raw.icrManha        ?? 5 },
+      { id: "2", start: "18:00", end: "23:00", icr: raw.icrNoiteSemana  ?? 6 },
+    ],
+    isf:          raw.isf          ?? 30,
+    corrTarget:   raw.corrTarget   ?? 110,
+    corrPostMeal: raw.corrPostMeal ?? 160,
+  };
+};
+
+// Retorna o ICR (g CHO/U) para um dado horário (h=0-23, m=0-59)
+const getICR = (h, m, ranges) => {
+  if (!ranges?.length) return 5;
+  const cur = h * 60 + m;
+  for (const r of ranges) {
+    const [sh, sm] = r.start.split(":").map(Number);
+    const [eh, em] = r.end.split(":").map(Number);
+    const s = sh * 60 + sm, e = eh * 60 + em;
+    if (s < e) { if (cur >= s && cur < e) return r.icr; }
+    else        { if (cur >= s || cur < e) return r.icr; } // cruza meia-noite
+  }
+  return ranges[0].icr; // fallback: primeira faixa
+};
 
 const GROQ_URL        = "https://api.groq.com/openai/v1/chat/completions";
 const GROQ_TEXT_MODEL = "llama-3.3-70b-versatile";
@@ -247,9 +282,7 @@ PERFIL DO USUÁRIO:
 - Caneta SEM meias-unidades → arredondar dose final para inteiro (arredondar por ÚLTIMO)
 
 ICR:
-- 06:00–18:00: 1U / ${s.icrManha}g CHO
-- 18:00–23:00 semana: 1U / ${s.icrNoiteSemana}g CHO
-- 18:00–23:00 fim de semana: 1U / ${s.icrNoiteFDS}g CHO
+${(s.icrRanges||DEFAULT_SETTINGS.icrRanges).map(r=>`- ${r.start}–${r.end}: 1U / ${r.icr}g CHO`).join("\n")}
 
 CORREÇÃO:
 - Alvo padrão: ${s.corrTarget} mg/dL → (Glicemia − ${s.corrTarget}) / ${s.isf} = U correção
@@ -317,7 +350,7 @@ FORMATO DE RESPOSTA — USE EXATAMENTE ESTE MODELO SEMPRE QUE CALCULAR DOSE:
 **Total: Xg**
 
 **💉 Dose sugerida: Xu**
-- CHO: Xg ÷ ${s.icrManha} = X,Xu  ← use o ICR correto para a hora injetada no contexto
+- CHO: Xg ÷ X = X,Xu  ← use o ICR correto para a hora injetada no contexto
 - Correção: (X − ${s.corrTarget}) / ${s.isf} = X,Xu
 - Tendência: ±X,Xu
 - IOB ativo: −X,Xu
@@ -481,8 +514,8 @@ const predictGlucose = (currentG, trendEmoji, activeDoses, dark, nowMs=Date.now(
     // Carbs: COB absorbed between now and t → glucose rises
     const cobAbsorbed = Math.max(0, calcTotalCOBAt(live,nowMs) - calcTotalCOBAt(live,futMs));
     const nowH = new Date(nowMs).getHours();
-    const isWknd = [0,6].includes(new Date(nowMs).getDay());
-    const ICR = (nowH>=18&&nowH<23) ? (isWknd ? appSettings.icrNoiteFDS : appSettings.icrNoiteSemana) : appSettings.icrManha;
+    const nowM = new Date(nowMs).getMinutes();
+    const ICR = getICR(nowH, nowM, appSettings.icrRanges);
     const carbDelta = cobAbsorbed * (ISF/ICR);
     // Circadian residual at 30% (trend already carries most of it)
     const dawnDelta = (DAWN_VEL[futH]||0) * t * 0.3;
@@ -1952,75 +1985,189 @@ const SettingsCtx = createContext({ settings: DEFAULT_SETTINGS, setSettings: ()=
 function SettingsModal({open, onClose}) {
   const {dark} = useContext(ThemeCtx);
   const {settings, setSettings} = useContext(SettingsCtx);
-  const [draft, setDraft] = useState({...settings});
+  const [draft, setDraft] = useState({...settings, icrRanges:[...settings.icrRanges.map(r=>({...r}))]});
+  const [adding, setAdding] = useState(false);
+  const [newRange, setNewRange] = useState({start:"00:00",end:"06:00",icr:5});
+  const [addErr, setAddErr] = useState("");
 
-  useEffect(()=>{ if(open) setDraft({...settings}); },[open]);
+  useEffect(()=>{
+    if(open){
+      setDraft({...settings, icrRanges:[...settings.icrRanges.map(r=>({...r}))]});
+      setAdding(false); setAddErr("");
+    }
+  },[open]);
 
-  const field = (label, key, unit, min, max) => (
-    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",
-      padding:"10px 0",borderBottom:"1px solid var(--border)"}}>
-      <div>
-        <div style={{fontSize:"13px",fontWeight:600,color:"var(--text)"}}>{label}</div>
-        <div style={{fontSize:"10px",color:"var(--text3)",marginTop:"1px"}}>{unit}</div>
-      </div>
-      <input
-        type="number" inputMode="numeric" value={draft[key]}
-        onChange={e=>{
-          const v=parseFloat(e.target.value);
-          if(!isNaN(v)&&v>=min&&v<=max) setDraft(d=>({...d,[key]:v}));
-        }}
-        style={{width:"72px",background:"var(--surface2)",border:"1px solid var(--border)",
-          borderRadius:"8px",padding:"7px 10px",color:"var(--text)",fontSize:"16px",
-          fontFamily:"var(--mono)",textAlign:"center",touchAction:"manipulation"}}/>
-    </div>
-  );
+  const updRange = (id, key, val) =>
+    setDraft(d=>({...d, icrRanges: d.icrRanges.map(r=>r.id===id?{...r,[key]:val}:r)}));
+
+  const delRange = (id) =>
+    setDraft(d=>({...d, icrRanges: d.icrRanges.filter(r=>r.id!==id)}));
+
+  const confirmAdd = () => {
+    if(!/^\d{2}:\d{2}$/.test(newRange.start)||!/^\d{2}:\d{2}$/.test(newRange.end))
+      return setAddErr("Horário inválido (HH:MM)");
+    if(newRange.start===newRange.end)
+      return setAddErr("Início e fim não podem ser iguais");
+    if(!newRange.icr||newRange.icr<1||newRange.icr>30)
+      return setAddErr("ICR deve ser entre 1 e 30");
+    setDraft(d=>({...d, icrRanges:[...d.icrRanges,{...newRange,id:Date.now().toString()}]}));
+    setAdding(false); setAddErr(""); setNewRange({start:"00:00",end:"06:00",icr:5});
+  };
 
   const save = () => {
+    if(!draft.icrRanges.length) return;
     appSettings = {...draft};
     setSettings(draft);
     lsSet(KEY_SETTINGS, draft);
     onClose();
   };
 
+  const numField = (label, key, unit, min, max) => (
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",
+      padding:"10px 0",borderBottom:"1px solid var(--border)"}}>
+      <div>
+        <div style={{fontSize:"13px",fontWeight:600,color:"var(--text)"}}>{label}</div>
+        <div style={{fontSize:"10px",color:"var(--text3)",marginTop:"1px"}}>{unit}</div>
+      </div>
+      <input type="number" inputMode="numeric" value={draft[key]}
+        onChange={e=>{const v=parseFloat(e.target.value);if(!isNaN(v)&&v>=min&&v<=max)setDraft(d=>({...d,[key]:v}));}}
+        style={{width:"72px",background:"var(--surface2)",border:"1px solid var(--border)",
+          borderRadius:"8px",padding:"7px 10px",color:"var(--text)",fontSize:"16px",
+          fontFamily:"var(--mono)",textAlign:"center"}}/>
+    </div>
+  );
+
+  const timeInput = (val, onChange, style={}) => (
+    <input type="time" value={val} onChange={e=>onChange(e.target.value)}
+      style={{background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"8px",
+        padding:"6px 8px",color:"var(--text)",fontSize:"14px",fontFamily:"var(--mono)",
+        width:"88px",textAlign:"center",...style}}/>
+  );
+
   if (!open) return null;
   return (
     <>
       <div style={{position:"fixed",inset:0,zIndex:299,background:"rgba(0,0,0,.5)",backdropFilter:"blur(3px)"}} onClick={onClose}/>
       <div className="card" style={{position:"fixed",bottom:0,left:0,right:0,zIndex:300,
-        borderRadius:"20px 20px 0 0",padding:"0",maxHeight:"85vh",overflow:"auto",
+        borderRadius:"20px 20px 0 0",padding:0,maxHeight:"88vh",display:"flex",flexDirection:"column",
         boxShadow:"0 -4px 24px rgba(0,0,0,.3)",animation:"alertIn .2s ease"}}>
-        {/* Header */}
+
+        {/* Header sticky */}
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",
           padding:"16px 16px 12px",borderBottom:"1px solid var(--border)",
-          position:"sticky",top:0,background:"var(--surface)",zIndex:1}}>
+          background:"var(--surface)",borderRadius:"20px 20px 0 0",flexShrink:0}}>
           <div style={{display:"flex",alignItems:"center",gap:"8px",fontSize:"15px",fontWeight:700,color:"var(--text)"}}>
             <IcoGear s={16} c="var(--accent)"/> Configurações
           </div>
           <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",
-            padding:"4px",display:"flex",alignItems:"center",color:"var(--text3)"}}>
+            padding:"4px",display:"flex",alignItems:"center"}}>
             <IcoX s={18} c="var(--text3)"/>
           </button>
         </div>
-        <div style={{padding:"0 16px 8px"}}>
-          {/* ICR */}
+
+        {/* Scroll body */}
+        <div style={{overflow:"auto",flex:1,padding:"0 16px 8px"}}>
+
+          {/* ICR Ranges */}
           <div style={{fontSize:"11px",fontWeight:700,color:"var(--text3)",textTransform:"uppercase",
-            letterSpacing:".06em",padding:"14px 0 4px"}}>ICR — Relação insulina/carboidrato</div>
-          {field("Manhã / tarde (06:00–18:00)",   "icrManha",       "1U para cada Xg de CHO", 3, 15)}
-          {field("Noite semana (18:00–23:00)",     "icrNoiteSemana", "1U para cada Xg de CHO", 3, 15)}
-          {field("Noite fim de semana (18:00–23:00)", "icrNoiteFDS", "1U para cada Xg de CHO", 3, 15)}
+            letterSpacing:".06em",padding:"14px 0 8px"}}>
+            ICR — Relação insulina/carboidrato
+          </div>
+
+          {draft.icrRanges.length === 0 && (
+            <div style={{fontSize:"12px",color:"var(--text3)",padding:"8px 0",fontStyle:"italic"}}>
+              Nenhuma faixa configurada. Adicione ao menos uma.
+            </div>
+          )}
+
+          {draft.icrRanges.map((r, i) => (
+            <div key={r.id} style={{background:"var(--surface2)",borderRadius:"10px",
+              padding:"10px 12px",marginBottom:"8px",border:"1px solid var(--border)"}}>
+              <div style={{display:"flex",alignItems:"center",gap:"6px",flexWrap:"wrap"}}>
+                <span style={{fontSize:"11px",color:"var(--text3)",flexShrink:0}}>De</span>
+                {timeInput(r.start, v=>updRange(r.id,"start",v))}
+                <span style={{fontSize:"11px",color:"var(--text3)",flexShrink:0}}>até</span>
+                {timeInput(r.end,   v=>updRange(r.id,"end",v))}
+                <div style={{display:"flex",alignItems:"center",gap:"4px",marginLeft:"auto"}}>
+                  <span style={{fontSize:"11px",color:"var(--text3)",flexShrink:0}}>1U /</span>
+                  <input type="number" inputMode="numeric" value={r.icr} min={1} max={30}
+                    onChange={e=>{const v=parseInt(e.target.value);if(!isNaN(v)&&v>=1&&v<=30)updRange(r.id,"icr",v);}}
+                    style={{width:"50px",background:"var(--surface)",border:"1px solid var(--border)",
+                      borderRadius:"8px",padding:"6px 6px",color:"var(--text)",fontSize:"16px",
+                      fontFamily:"var(--mono)",textAlign:"center"}}/>
+                  <span style={{fontSize:"11px",color:"var(--text3)",flexShrink:0}}>g</span>
+                  <button onClick={()=>delRange(r.id)} disabled={draft.icrRanges.length<=1}
+                    title="Excluir faixa"
+                    style={{background:"none",border:"none",cursor:draft.icrRanges.length<=1?"not-allowed":"pointer",
+                      padding:"4px",display:"flex",alignItems:"center",opacity:draft.icrRanges.length<=1?.3:1,
+                      marginLeft:"4px"}}>
+                    <IcoTrash s={15} c="#ef4444"/>
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+
+          {/* Add range form */}
+          {adding ? (
+            <div style={{background:dark?"rgba(14,165,233,.08)":"rgba(14,165,233,.06)",borderRadius:"10px",
+              padding:"12px",border:"1px dashed rgba(14,165,233,.4)",marginBottom:"8px"}}>
+              <div style={{fontSize:"12px",fontWeight:600,color:"var(--accent)",marginBottom:"10px"}}>
+                Nova faixa
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:"6px",flexWrap:"wrap",marginBottom:"8px"}}>
+                <span style={{fontSize:"11px",color:"var(--text3)"}}>De</span>
+                {timeInput(newRange.start, v=>setNewRange(r=>({...r,start:v})))}
+                <span style={{fontSize:"11px",color:"var(--text3)"}}>até</span>
+                {timeInput(newRange.end,   v=>setNewRange(r=>({...r,end:v})))}
+                <div style={{display:"flex",alignItems:"center",gap:"4px",marginLeft:"auto"}}>
+                  <span style={{fontSize:"11px",color:"var(--text3)"}}>1U /</span>
+                  <input type="number" inputMode="numeric" value={newRange.icr} min={1} max={30}
+                    onChange={e=>{const v=parseInt(e.target.value);if(!isNaN(v))setNewRange(r=>({...r,icr:v}));}}
+                    style={{width:"50px",background:"var(--surface)",border:"1px solid var(--border)",
+                      borderRadius:"8px",padding:"6px",color:"var(--text)",fontSize:"16px",
+                      fontFamily:"var(--mono)",textAlign:"center"}}/>
+                  <span style={{fontSize:"11px",color:"var(--text3)"}}>g</span>
+                </div>
+              </div>
+              {addErr && <div style={{fontSize:"11px",color:"#ef4444",marginBottom:"8px"}}>{addErr}</div>}
+              <div style={{display:"flex",gap:"8px"}}>
+                <button onClick={()=>{setAdding(false);setAddErr("");}} className="btn btn-ghost"
+                  style={{flex:1,padding:"8px",fontSize:"12px"}}>Cancelar</button>
+                <button onClick={confirmAdd} className="btn btn-primary"
+                  style={{flex:2,padding:"8px",fontSize:"12px",display:"flex",alignItems:"center",justifyContent:"center",gap:"4px"}}>
+                  <IcoCheck s={13} c="white"/> Adicionar
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button onClick={()=>setAdding(true)}
+              style={{width:"100%",padding:"9px",borderRadius:"9px",border:"1px dashed var(--border)",
+                background:"transparent",color:"var(--accent)",fontSize:"12px",fontWeight:600,
+                cursor:"pointer",fontFamily:"var(--font)",display:"flex",alignItems:"center",
+                justifyContent:"center",gap:"6px",marginBottom:"4px",touchAction:"manipulation"}}>
+              + Adicionar faixa
+            </button>
+          )}
+
           {/* ISF + Alvos */}
           <div style={{fontSize:"11px",fontWeight:700,color:"var(--text3)",textTransform:"uppercase",
             letterSpacing:".06em",padding:"14px 0 4px"}}>Correção</div>
-          {field("ISF — sensibilidade", "isf",          "mg/dL por unidade de insulina", 10, 80)}
-          {field("Alvo padrão",         "corrTarget",    "mg/dL — fora do período pós-prandial", 80, 160)}
-          {field("Alvo pós-prandial",   "corrPostMeal",  "mg/dL — primeiras 2h após dose",        100, 220)}
+          {numField("ISF — sensibilidade",  "isf",          "mg/dL por unidade de insulina",        10, 80)}
+          {numField("Alvo padrão",           "corrTarget",   "mg/dL — fora do período pós-prandial", 80, 160)}
+          {numField("Alvo pós-prandial",     "corrPostMeal", "mg/dL — primeiras 2h após dose",       100, 220)}
         </div>
-        <div style={{padding:"12px 16px 28px",display:"flex",gap:"8px"}}>
+
+        {/* Footer */}
+        <div style={{padding:"12px 16px 28px",display:"flex",gap:"8px",flexShrink:0,
+          borderTop:"1px solid var(--border)",background:"var(--surface)"}}>
           <button onClick={onClose} className="btn btn-ghost" style={{flex:1,padding:"12px",fontSize:"14px"}}>
             Cancelar
           </button>
-          <button onClick={save} className="btn btn-primary" style={{flex:2,padding:"12px",fontSize:"14px",
-            display:"flex",alignItems:"center",justifyContent:"center",gap:"6px"}}>
+          <button onClick={save} disabled={!draft.icrRanges.length} className="btn btn-primary"
+            style={{flex:2,padding:"12px",fontSize:"14px",
+              display:"flex",alignItems:"center",justifyContent:"center",gap:"6px",
+              opacity:draft.icrRanges.length?1:.4}}>
             <IcoCheck s={15} c="white"/> Salvar
           </button>
         </div>
@@ -2228,9 +2375,8 @@ function App() {
   const [fabOpen,setFabOpen] = useState(false);
   const [settingsOpen,setSettingsOpen] = useState(false);
   const [settings,setSettingsState] = useState(()=>{
-    const saved = lsGet(KEY_SETTINGS);
-    const s = {...DEFAULT_SETTINGS,...(saved||{})};
-    appSettings = s; // sync módulo global
+    const s = migrateSettings(lsGet(KEY_SETTINGS)) || {...DEFAULT_SETTINGS};
+    appSettings = s;
     return s;
   });
   const setSettings = (s) => { appSettings = s; setSettingsState(s); };
