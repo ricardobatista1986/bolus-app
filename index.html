@@ -181,6 +181,10 @@ const IcoMarkers = ({s=18,c="currentColor"}) => <SvgIco size={s} color={c}>
   <circle cx="8" cy="12" r="2"/><circle cx="16" cy="8" r="2"/>
   <line x1="8" y1="12" x2="8" y2="22"/><line x1="16" y1="8" x2="16" y2="22"/>
 </SvgIco>;
+const IcoGear = ({s=18,c="currentColor"}) => <SvgIco size={s} color={c}>
+  <circle cx="12" cy="12" r="3"/>
+  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+</SvgIco>;
 
 /* ── CONSTANTS ─────────────────────────────────────────────────────────── */
 const SUPABASE_URL   = "https://sfsutycytyonznhwtfkf.supabase.co";
@@ -195,18 +199,30 @@ const CHO_ONSET   = 10;
 const CHO_PEAK    = 45;
 const CHO_DIA     = 120;
 
-const KEY_APIKEY  = "bolus-groq-key";   // preferência local — fica em localStorage
-const KEY_THEME   = "bolus-theme";      // preferência local — fica em localStorage
-const KEY_DOSES   = "bolus-activedoses-v1"; // cache offline — fonte de verdade: Supabase
-const KEY_HISTORY = "bolus-history-v3";    // cache offline — fonte de verdade: Supabase
+const KEY_APIKEY    = "bolus-groq-key";
+const KEY_THEME     = "bolus-theme";
+const KEY_DOSES     = "bolus-activedoses-v1";
+const KEY_HISTORY   = "bolus-history-v3";
+const KEY_SETTINGS  = "bolus-settings-v1";
 // food_library e prediction_validations → Supabase (sem localStorage)
+
+const DEFAULT_SETTINGS = {
+  icrManha:        5,   // g CHO/U  06:00–18:00
+  icrNoiteSemana:  6,   // g CHO/U  18:00–23:00 dias úteis
+  icrNoiteFDS:     5,   // g CHO/U  18:00–23:00 fim de semana
+  isf:            30,   // mg/dL/U
+  corrTarget:    110,   // alvo correção padrão
+  corrPostMeal:  160,   // alvo pós-prandial (< 2h)
+};
+// Singleton mutable usado pelas funções puras (fora do React)
+let appSettings = { ...DEFAULT_SETTINGS };
 
 const GROQ_URL        = "https://api.groq.com/openai/v1/chat/completions";
 const GROQ_TEXT_MODEL = "llama-3.3-70b-versatile";
 const GROQ_VIS_MODEL  = "llama-3.2-11b-vision-preview";
 
-/* ── SYSTEM PROMPT ─────────────────────────────────────────────────────── */
-const SYSTEM_PROMPT = `Você é um assistente especializado em contagem de carboidratos e cálculo de dose de insulina para diabetes tipo 1.
+/* ── SYSTEM PROMPT (gerado dinamicamente a partir de settings) ─────────── */
+const buildSystemPrompt = (s = DEFAULT_SETTINGS) => `Você é um assistente especializado em contagem de carboidratos e cálculo de dose de insulina para diabetes tipo 1.
 
 REGRAS DE COMUNICAÇÃO:
 - Aceite qualquer forma de escrita em português: informal, abreviações, gírias, erros de digitação
@@ -220,6 +236,10 @@ LEITURA DE GLICEMIA (prioridade):
 3. Texto do usuário: "tô em 180", "127 →", "libre marcou 200 ↗"
 Se nenhuma disponível, pergunte.
 
+HORA LOCAL:
+- A hora atual é sempre injetada no contexto [HORA LOCAL: HH:MM (dia da semana)]
+- USE ESSA HORA para escolher o ICR correto. Nunca suponha o horário.
+
 PERFIL DO USUÁRIO:
 - Diabetes tipo 1, FreeStyle Libre 2
 - Basal: Tresiba 35U manhã (fixa) | NPH 4U antes de dormir (fixa)
@@ -227,15 +247,16 @@ PERFIL DO USUÁRIO:
 - Caneta SEM meias-unidades → arredondar dose final para inteiro (arredondar por ÚLTIMO)
 
 ICR:
-- 06:00–18:00: 1U / 5g CHO
-- 18:00–23:00 semana: 1U / 6g CHO
-- 18:00–23:00 fim de semana: 1U / 5g CHO
+- 06:00–18:00: 1U / ${s.icrManha}g CHO
+- 18:00–23:00 semana: 1U / ${s.icrNoiteSemana}g CHO
+- 18:00–23:00 fim de semana: 1U / ${s.icrNoiteFDS}g CHO
 
 CORREÇÃO:
-- Alvo padrão: 110 mg/dL → (Glicemia − 110) / 30 = U correção
-- Pós-refeição (< 2h desde última dose): alvo 160 mg/dL → (Glicemia − 160) / 30
+- Alvo padrão: ${s.corrTarget} mg/dL → (Glicemia − ${s.corrTarget}) / ${s.isf} = U correção
+- Pós-refeição (< 2h desde última dose): alvo ${s.corrPostMeal} mg/dL → (Glicemia − ${s.corrPostMeal}) / ${s.isf}
   ↳ ATENÇÃO: o contexto injetado indicará se está em período pós-prandial
-- Com IOB ativo: (Glicemia − 100) / 30 − IOB
+- Com IOB ativo: (Glicemia − 100) / ${s.isf} − IOB
+- Correção NUNCA negativa: se o resultado for negativo, use 0.
 
 SETA DE TENDÊNCIA (somar após CHO + Correção, antes de arredondar):
 ⬆️ +1U | ↗️ +0,5U | ➡️ 0 | ↘️ −0,5U | ⬇️ −1U
@@ -296,8 +317,8 @@ FORMATO DE RESPOSTA — USE EXATAMENTE ESTE MODELO SEMPRE QUE CALCULAR DOSE:
 **Total: Xg**
 
 **💉 Dose sugerida: Xu**
-- CHO: Xg ÷ X = X,Xu
-- Correção: (X − 110) / 30 = X,Xu
+- CHO: Xg ÷ ${s.icrManha} = X,Xu  ← use o ICR correto para a hora injetada no contexto
+- Correção: (X − ${s.corrTarget}) / ${s.isf} = X,Xu
 - Tendência: ±X,Xu
 - IOB ativo: −X,Xu
 - Bruto: X,Xu → **Arredondado: Xu**
@@ -460,7 +481,8 @@ const predictGlucose = (currentG, trendEmoji, activeDoses, dark, nowMs=Date.now(
     // Carbs: COB absorbed between now and t → glucose rises
     const cobAbsorbed = Math.max(0, calcTotalCOBAt(live,nowMs) - calcTotalCOBAt(live,futMs));
     const nowH = new Date(nowMs).getHours();
-    const ICR = (nowH>=18&&nowH<23) ? 6 : 5;
+    const isWknd = [0,6].includes(new Date(nowMs).getDay());
+    const ICR = (nowH>=18&&nowH<23) ? (isWknd ? appSettings.icrNoiteFDS : appSettings.icrNoiteSemana) : appSettings.icrManha;
     const carbDelta = cobAbsorbed * (ISF/ICR);
     // Circadian residual at 30% (trend already carries most of it)
     const dawnDelta = (DAWN_VEL[futH]||0) * t * 0.3;
@@ -1008,7 +1030,7 @@ function AlertQueue({reading, predictions, history, activeDoses, dismissed, onDi
   const nightHypoAlert= hasReading && !hypoNow && nightWindow && predictions?.some(p => p.t >= 60 && p.value < 70);
   const totalCOB      = calcTotalActiveCarbs(live);
   const forgottenAlert= hasReading && !hypoNow && vel >= 1.5 && totalCOB === 0 && !dismissed.has("forgottenMeal");
-  const ISF = 30, corrTarget = 160;
+  const ISF = appSettings.isf, corrTarget = appSettings.corrPostMeal;
   const corrDose = postMealAlert ? Math.max(0, Math.round((g - corrTarget) / ISF)) : null;
   const now = Date.now();
   const candidates = [];
@@ -1923,6 +1945,90 @@ function GlucoseChart({glucoseData, history, activeDoses, onRowsUpdate}) {
   );
 }
 
+/* ── SETTINGS CONTEXT ─────────────────────────────────────────────────── */
+const SettingsCtx = createContext({ settings: DEFAULT_SETTINGS, setSettings: ()=>{} });
+
+/* ── SETTINGS MODAL ───────────────────────────────────────────────────── */
+function SettingsModal({open, onClose}) {
+  const {dark} = useContext(ThemeCtx);
+  const {settings, setSettings} = useContext(SettingsCtx);
+  const [draft, setDraft] = useState({...settings});
+
+  useEffect(()=>{ if(open) setDraft({...settings}); },[open]);
+
+  const field = (label, key, unit, min, max) => (
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",
+      padding:"10px 0",borderBottom:"1px solid var(--border)"}}>
+      <div>
+        <div style={{fontSize:"13px",fontWeight:600,color:"var(--text)"}}>{label}</div>
+        <div style={{fontSize:"10px",color:"var(--text3)",marginTop:"1px"}}>{unit}</div>
+      </div>
+      <input
+        type="number" inputMode="numeric" value={draft[key]}
+        onChange={e=>{
+          const v=parseFloat(e.target.value);
+          if(!isNaN(v)&&v>=min&&v<=max) setDraft(d=>({...d,[key]:v}));
+        }}
+        style={{width:"72px",background:"var(--surface2)",border:"1px solid var(--border)",
+          borderRadius:"8px",padding:"7px 10px",color:"var(--text)",fontSize:"16px",
+          fontFamily:"var(--mono)",textAlign:"center",touchAction:"manipulation"}}/>
+    </div>
+  );
+
+  const save = () => {
+    appSettings = {...draft};
+    setSettings(draft);
+    lsSet(KEY_SETTINGS, draft);
+    onClose();
+  };
+
+  if (!open) return null;
+  return (
+    <>
+      <div style={{position:"fixed",inset:0,zIndex:299,background:"rgba(0,0,0,.5)",backdropFilter:"blur(3px)"}} onClick={onClose}/>
+      <div className="card" style={{position:"fixed",bottom:0,left:0,right:0,zIndex:300,
+        borderRadius:"20px 20px 0 0",padding:"0",maxHeight:"85vh",overflow:"auto",
+        boxShadow:"0 -4px 24px rgba(0,0,0,.3)",animation:"alertIn .2s ease"}}>
+        {/* Header */}
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",
+          padding:"16px 16px 12px",borderBottom:"1px solid var(--border)",
+          position:"sticky",top:0,background:"var(--surface)",zIndex:1}}>
+          <div style={{display:"flex",alignItems:"center",gap:"8px",fontSize:"15px",fontWeight:700,color:"var(--text)"}}>
+            <IcoGear s={16} c="var(--accent)"/> Configurações
+          </div>
+          <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",
+            padding:"4px",display:"flex",alignItems:"center",color:"var(--text3)"}}>
+            <IcoX s={18} c="var(--text3)"/>
+          </button>
+        </div>
+        <div style={{padding:"0 16px 8px"}}>
+          {/* ICR */}
+          <div style={{fontSize:"11px",fontWeight:700,color:"var(--text3)",textTransform:"uppercase",
+            letterSpacing:".06em",padding:"14px 0 4px"}}>ICR — Relação insulina/carboidrato</div>
+          {field("Manhã / tarde (06:00–18:00)",   "icrManha",       "1U para cada Xg de CHO", 3, 15)}
+          {field("Noite semana (18:00–23:00)",     "icrNoiteSemana", "1U para cada Xg de CHO", 3, 15)}
+          {field("Noite fim de semana (18:00–23:00)", "icrNoiteFDS", "1U para cada Xg de CHO", 3, 15)}
+          {/* ISF + Alvos */}
+          <div style={{fontSize:"11px",fontWeight:700,color:"var(--text3)",textTransform:"uppercase",
+            letterSpacing:".06em",padding:"14px 0 4px"}}>Correção</div>
+          {field("ISF — sensibilidade", "isf",          "mg/dL por unidade de insulina", 10, 80)}
+          {field("Alvo padrão",         "corrTarget",    "mg/dL — fora do período pós-prandial", 80, 160)}
+          {field("Alvo pós-prandial",   "corrPostMeal",  "mg/dL — primeiras 2h após dose",        100, 220)}
+        </div>
+        <div style={{padding:"12px 16px 28px",display:"flex",gap:"8px"}}>
+          <button onClick={onClose} className="btn btn-ghost" style={{flex:1,padding:"12px",fontSize:"14px"}}>
+            Cancelar
+          </button>
+          <button onClick={save} className="btn btn-primary" style={{flex:2,padding:"12px",fontSize:"14px",
+            display:"flex",alignItems:"center",justifyContent:"center",gap:"6px"}}>
+            <IcoCheck s={15} c="white"/> Salvar
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
 /* ── FAB / DOSE AVULSA ────────────────────────────────────────────────── */
 function FAB({onRegisterDose, totalIOB, pred60, open, onClose}) {
   const {dark} = useContext(ThemeCtx);
@@ -2120,6 +2226,14 @@ function App() {
   const [tab,setTab]         = useState("chart");
   const [mealOpen,setMealOpen] = useState(false);
   const [fabOpen,setFabOpen] = useState(false);
+  const [settingsOpen,setSettingsOpen] = useState(false);
+  const [settings,setSettingsState] = useState(()=>{
+    const saved = lsGet(KEY_SETTINGS);
+    const s = {...DEFAULT_SETTINGS,...(saved||{})};
+    appSettings = s; // sync módulo global
+    return s;
+  });
+  const setSettings = (s) => { appSettings = s; setSettingsState(s); };
   const [msgs,setMsgs]       = useState([{role:"assistant",content:"Olá! 👋 Conectando ao sensor Libre...\n\nEnquanto isso, me diz o que vai comer.",time:fmtTime()}]);
   const [input,setInput]     = useState("");
   const [images,setImages]   = useState([]);
@@ -2331,7 +2445,7 @@ function App() {
   /* ── Build Groq messages ── */
   const buildGroqMsgs = useCallback((newText,newImgs)=>{
     const messages=[];
-    messages.push({role:"system",content:SYSTEM_PROMPT});
+    messages.push({role:"system",content:buildSystemPrompt(settings)});
     for(const m of msgs){
       if(m.role==="assistant"){
         messages.push({role:"assistant",content:m.content||" "});
@@ -2347,6 +2461,13 @@ function App() {
     }
     let txt=newText||"Analise as imagens.";
     const ctx=[];
+    // Hora local — crítico para seleção correta do ICR
+    const _now=new Date();
+    const _dias=["domingo","segunda","terça","quarta","quinta","sexta","sábado"];
+    const _hhmm=_now.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});
+    const _dayName=_dias[_now.getDay()];
+    const _isFDS=[0,6].includes(_now.getDay());
+    ctx.push(`HORA LOCAL: ${_hhmm} (${_dayName}${_isFDS?" — fim de semana":""})`);
     if(glucose?.glucose&&!glucose.error)
       ctx.push(`GLICEMIA ATUAL DO SENSOR: ${glucose.glucose} mg/dL ${glucose.trendEmoji||"→"} (${glucose.trendText||"estável"}), leitura em tempo real`);
     const iob=iobContext(); if(iob) ctx.push(iob);
@@ -2355,7 +2476,7 @@ function App() {
     const lastDoseMs=live.length?Math.max(...live.map(d=>d.appliedAt)):null;
     const minsPostDose=lastDoseMs?Math.round((Date.now()-lastDoseMs)/60000):null;
     if(minsPostDose!==null&&minsPostDose<120)
-      ctx.push(`PERÍODO PÓS-PRANDIAL: ${minsPostDose}min desde última dose — use alvo 160 mg/dL para qualquer correção. Correção nunca negativa: se resultado for negativo, use 0.`);
+      ctx.push(`PERÍODO PÓS-PRANDIAL: ${minsPostDose}min desde última dose — use alvo ${settings.corrPostMeal} mg/dL para correção. Correção nunca negativa: se resultado for negativo, use 0.`);
     if(ctx.length) txt=`[${ctx.join(" | ")}]\n\n${txt}`;
     if(newImgs?.length){
       const parts=newImgs.map(s=>{const i=s.indexOf(",");const d=i>=0?s.slice(i+1):"";return{type:"image_url",image_url:{url:`data:image/jpeg;base64,${d}`}};});
@@ -2365,7 +2486,7 @@ function App() {
       messages.push({role:"user",content:txt});
     }
     return messages;
-  },[msgs,glucose,iobContext]);
+  },[msgs,glucose,iobContext,settings]);
 
   /* ── Register dose — armazena carbos para carbos ativos ── */
   const registerDose = useCallback((units, suggested, meal, note, carbType='fast', overrideAt=null)=>{
@@ -2566,6 +2687,7 @@ COB adicionado ao modelo. Previsões atualizadas.`,
   );
 
   return (
+    <SettingsCtx.Provider value={{settings, setSettings}}>
     <ThemeCtx.Provider value={{dark,toggle:()=>setDark(d=>!d)}}>
       <div style={{height:"100vh",display:"flex",flexDirection:"column",background:"var(--bg)",position:"relative",overflow:"hidden"}}>
 
@@ -2598,6 +2720,12 @@ COB adicionado ao modelo. Previsões atualizadas.`,
             </div>
           )}
           <ThemeToggle dark={dark} onToggle={()=>setDark(d=>!d)}/>
+          <button onClick={()=>setSettingsOpen(true)} aria-label="Configurações"
+            style={{background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"20px",
+              padding:"6px 8px",cursor:"pointer",display:"flex",alignItems:"center",
+              minHeight:"36px",touchAction:"manipulation"}}>
+            <IcoGear s={15} c="var(--text2)"/>
+          </button>
         </div>
 
         {/* ── ALERT QUEUE — 1 alerta por vez, auto-dismiss 2s, cooldown 2min ── */}
@@ -2721,7 +2849,9 @@ COB adicionado ao modelo. Previsões atualizadas.`,
           </button>
         </div>
       </div>
+      <SettingsModal open={settingsOpen} onClose={()=>setSettingsOpen(false)}/>
     </ThemeCtx.Provider>
+    </SettingsCtx.Provider>
   );
 }
 
