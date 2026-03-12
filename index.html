@@ -2898,9 +2898,9 @@ COB adicionado ao modelo. Previsões atualizadas.`,
             boxShadow:"0 2px 8px rgba(13,148,136,.30)"}}>
             <IcoSyringe s={17} c="white"/>
           </div>
-          <div style={{flex:1,minWidth:0}}>
-            <div style={{fontWeight:800,fontSize:"14px",color:"var(--text)",letterSpacing:"-0.02em"}}>Assistente Bolus</div>
-            <div style={{fontSize:"9px",color:"var(--text3)",fontWeight:500,letterSpacing:"0.03em"}}>T1 · Libre 2 · Fiasp</div>
+          <div style={{flex:1,minWidth:0,overflow:"hidden"}}>
+            <div style={{fontWeight:800,fontSize:"14px",color:"var(--text)",letterSpacing:"-0.02em",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>Assistente Bolus</div>
+            <div style={{fontSize:"9px",color:"var(--text3)",fontWeight:500,letterSpacing:"0.03em",whiteSpace:"nowrap"}}>T1 · Libre 2 · Fiasp</div>
           </div>
           <button onClick={()=>setTab(t=>t==="library"?"chart":"library")} aria-label="Biblioteca de Alimentos"
             style={{display:"flex",alignItems:"center",gap:"5px",padding:"6px 10px",
