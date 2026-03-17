@@ -2085,7 +2085,7 @@ function GlucoseChart({glucoseData, history, activeDoses, onRowsUpdate}) {
       <div style={{display:show?"flex":"none",gap:"5px",alignItems:"center",justifyContent:"flex-end",marginBottom:"4px",flexShrink:0}}>
         <button onClick={()=>setShowMarkers(v=>!v)}
           title={showMarkers?"Ocultar marcações":"Mostrar marcações"}
-          style={{padding:"4px 8px",borderRadius:"20px",border:`1px solid ${showMarkers?"var(--accent)":"var(--border)"}`,background:showMarkers?"var(--accent)":"var(--surface)",color:showMarkers?"white":"var(--text3)",cursor:"pointer",transition:"all .15s",marginRight:"2px",display:"flex",alignItems:"center",justifyContent:"center",minWidth:"30px",minHeight:"26px"}}>
+          style={{padding:"3px 8px",borderRadius:"20px",border:`1px solid ${showMarkers?"var(--accent)":"var(--border)"}`,background:showMarkers?"var(--accent)":"var(--surface)",color:showMarkers?"white":"var(--text3)",cursor:"pointer",transition:"all .15s",marginRight:"2px",display:"flex",alignItems:"center",justifyContent:"center",minWidth:"30px",minHeight:"26px"}}>
             <IcoMarkers s={13} c={showMarkers?"white":"var(--text3)"}/>
           </button>
         {[8,12,24].map(h=>(
