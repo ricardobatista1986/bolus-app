@@ -2,7 +2,7 @@
 <html lang="pt-BR" data-theme="light">
 <head>
   <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover"/>
   <title>DM1</title>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
@@ -32,6 +32,7 @@
       --font:       'Outfit', -apple-system, sans-serif;
       --mono:       'DM Mono', monospace;
       --bar-h:      62px;
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
     }
     [data-theme="dark"] {
       /* 60-30-10 dark mode:
@@ -1851,7 +1852,7 @@ function GlucoseChart({glucoseData, history, activeDoses, onRowsUpdate}) {
     }
   };
 
-  // Plugin de marcadores de dose/refeição
+  // Plugin de marcadores de dose/refeição — com agrupamento (≤15min)
   const doseMarkersPlugin = {
     id:"dm",
     afterDraw(chart){
@@ -1863,49 +1864,99 @@ function GlucoseChart({glucoseData, history, activeDoses, onRowsUpdate}) {
       const windowMs = hoursRef.current * 3600000;
       const since    = Date.now() - windowMs;
 
-      history
+      // 1. Filtra e ordena eventos na janela
+      const events = history
         .filter(r => r.appliedAt && (r.appliedDose > 0 || (r.appliedDose === 0 && r.carbs)) && r.appliedAt >= since)
-        .forEach(record => {
-          const px = x.getPixelForValue(record.appliedAt);
-          if(px < ca.left || px > ca.right) return;
+        .sort((a,b) => a.appliedAt - b.appliedAt);
+      if(!events.length) return;
 
-          // Find nearest real glucose value at this timestamp (for hairline anchor)
-          let nearestY = null, minDiff = Infinity;
-          rows.forEach(r => {
-            const diff = Math.abs(new Date(r.captured_at).getTime() - record.appliedAt);
-            if(diff < minDiff){ minDiff=diff; nearestY=r.value; }
-          });
-          const pyAnchor = nearestY != null && minDiff < 20*60000
-            ? y.getPixelForValue(nearestY)
-            : ca.bottom;
+      // 2. Agrupa eventos ≤ 15min de distância entre consecutivos
+      const groups = [];
+      let cur = [events[0]];
+      for(let i=1; i<events.length; i++){
+        if(events[i].appliedAt - events[i-1].appliedAt <= 15*60000){
+          cur.push(events[i]);
+        } else {
+          groups.push(cur);
+          cur = [events[i]];
+        }
+      }
+      groups.push(cur);
 
-          ctx.save();
-          // Hairline: from label bottom to data point on curve (sem dot)
-          const labelBottom = ca.top + (record.carbs ? 30 : 18);
-          ctx.strokeStyle = dark ? "rgba(45,212,191,.25)" : "rgba(2,100,180,.55)";
-          ctx.lineWidth = 0.75;
-          ctx.setLineDash([]);
-          ctx.beginPath();
-          ctx.moveTo(px, labelBottom);
-          ctx.lineTo(px, pyAnchor);
-          ctx.stroke();
-          // Labels
-          ctx.font = "bold 10px Outfit, sans-serif";
-          ctx.textAlign = "center";
-          if(record.appliedDose > 0) {
-            ctx.fillStyle = dark ? "rgba(45,212,191,.9)" : "rgba(15,118,110,.9)";
-            ctx.fillText(`💉${record.appliedDose}U`, px, ca.top + 12);
-          }
-          if(record.carbs) {
-            ctx.fillStyle = dark ? "rgba(22,163,74,.85)" : "rgba(22,163,74,.9)";
-            ctx.fillText(`🍽️${record.carbs}g`, px, ca.top + (record.appliedDose > 0 ? 24 : 12));
-          }
-          ctx.restore();
+      // Font size dinâmico: menor na janela 24h para não poluir
+      const fs = hoursRef.current >= 24 ? 9 : 10;
+      const lineH = fs + 2;
+
+      groups.forEach((grp, gi) => {
+        // Timestamp médio do grupo como posição X
+        const ts = grp.reduce((s,r)=>s+r.appliedAt,0)/grp.length;
+        const px = x.getPixelForValue(ts);
+        if(px < ca.left || px > ca.right) return;
+
+        // Agrega doses e carbs do grupo
+        const totalDose  = Math.round(grp.reduce((s,r)=>s+(r.appliedDose||0),0)*10)/10;
+        const totalCarbs = Math.round(grp.reduce((s,r)=>s+(r.carbs||0),0));
+
+        // Âncora Y: leitura de glicemia mais próxima do ts do grupo
+        let nearestY = null, minDiff = Infinity;
+        rows.forEach(r => {
+          const diff = Math.abs(new Date(r.captured_at).getTime() - ts);
+          if(diff < minDiff){ minDiff=diff; nearestY=r.value; }
         });
+        const pyAnchor = nearestY != null && minDiff < 20*60000
+          ? y.getPixelForValue(nearestY)
+          : (ca.top + ca.bottom) / 2;
+
+        // Linhas de label
+        const lines = [];
+        if(totalDose > 0) lines.push({text:`${totalDose}U`, color:dark?"rgba(45,212,191,.92)":"rgba(13,118,100,.92)"});
+        if(totalCarbs > 0) lines.push({text:`${totalCarbs}g`, color:dark?"rgba(134,239,172,.88)":"rgba(22,140,50,.88)"});
+        if(!lines.length) return;
+
+        const labelH  = lines.length * lineH;
+        const margin  = 7;
+
+        // Alternância: pares acima, ímpares abaixo — ajusta se sair dos limites
+        let above = gi % 2 === 0;
+        let labelTop = above ? pyAnchor - margin - labelH : pyAnchor + margin;
+        if(above && labelTop < ca.top + 4) { above = false; labelTop = pyAnchor + margin; }
+        if(!above && labelTop + labelH > ca.bottom - 4) { above = true; labelTop = pyAnchor - margin - labelH; }
+        labelTop = Math.max(ca.top + 3, Math.min(ca.bottom - labelH - 3, labelTop));
+
+        ctx.save();
+
+        // Dot colorido na curva
+        ctx.beginPath();
+        ctx.arc(px, pyAnchor, 3.5, 0, Math.PI*2);
+        ctx.fillStyle = dark ? "rgba(45,212,191,.65)" : "rgba(13,118,100,.55)";
+        ctx.fill();
+
+        // Hairline pontilhada entre label e dot
+        const hairFrom = above ? labelTop + labelH + 2 : labelTop - 2;
+        const hairTo   = above ? pyAnchor - 5 : pyAnchor + 5;
+        ctx.strokeStyle = dark ? "rgba(45,212,191,.18)" : "rgba(13,118,100,.25)";
+        ctx.lineWidth = 0.8;
+        ctx.setLineDash([2,3]);
+        ctx.beginPath();
+        ctx.moveTo(px, hairFrom);
+        ctx.lineTo(px, hairTo);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Labels
+        ctx.font = `700 ${fs}px Outfit, sans-serif`;
+        ctx.textAlign = "center";
+        lines.forEach((line, li) => {
+          ctx.fillStyle = line.color;
+          ctx.fillText(line.text, px, labelTop + (li+1)*lineH - 1);
+        });
+
+        ctx.restore();
+      });
     }
   };
 
-  // Prediction curve — solid purple dashed line + uncertainty band
+  // Prediction curve — bezier suave + banda de incerteza discreta + dot no anchor
   const makePredCurvePlugin = (predPoints, dark) => ({
     id:"predCurve",
     afterDatasetsDraw(chart){
@@ -1919,27 +1970,58 @@ function GlucoseChart({glucoseData, history, activeDoses, onRowsUpdate}) {
         .filter(p=>p.px>=ca.left-1 && p.px<=ca.right+1);
       if(pixels.length < 2) return;
 
+      // Helper: desenha bezier monotone entre array de pixels
+      const drawBezier = (pts) => {
+        pts.forEach((p,i) => {
+          if(i === 0){ ctx.moveTo(p.px, p.py); return; }
+          const prev = pts[i-1];
+          const cpx1 = prev.px + (p.px - prev.px) * 0.45;
+          const cpx2 = p.px   - (p.px - prev.px) * 0.45;
+          ctx.bezierCurveTo(cpx1, prev.py, cpx2, p.py, p.px, p.py);
+        });
+      };
+
+      // 1) Banda de incerteza — area fill suave, muito discreta
       const bandPixels = pixels.filter(p=>p.pyLow!=null&&p.pyHigh!=null);
       if(bandPixels.length >= 2){
         ctx.save();
         ctx.beginPath();
-        bandPixels.forEach((p,i)=>i===0?ctx.moveTo(p.px,p.pyHigh):ctx.lineTo(p.px,p.pyHigh));
-        [...bandPixels].reverse().forEach(p=>ctx.lineTo(p.px,p.pyLow));
+        // Borda superior
+        bandPixels.forEach((p,i)=>{
+          if(i===0){ctx.moveTo(p.px,p.pyHigh);return;}
+          const prev=bandPixels[i-1];
+          const cx1=prev.px+(p.px-prev.px)*0.45, cx2=p.px-(p.px-prev.px)*0.45;
+          ctx.bezierCurveTo(cx1,prev.pyHigh,cx2,p.pyHigh,p.px,p.pyHigh);
+        });
+        // Borda inferior (reversa)
+        [...bandPixels].reverse().forEach((p,i)=>{
+          const cx1=p.px+(bandPixels[bandPixels.length-1-i]?.px-p.px||0)*0.1;
+          ctx.lineTo(p.px,p.pyLow);
+        });
         ctx.closePath();
-        ctx.fillStyle = dark?"rgba(187,134,252,.08)":"rgba(142,68,173,.07)";
+        ctx.fillStyle = dark?"rgba(187,134,252,.07)":"rgba(120,80,200,.06)";
         ctx.fill();
         ctx.restore();
       }
 
-      // 2) Dashed prediction line — solid purple, no gradient
+      // 2) Linha pontilhada de previsão — bezier, tom suave
       ctx.save();
       ctx.setLineDash([5,4]);
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = dark?"rgba(187,134,252,.75)":"rgba(142,68,173,.65)";
+      ctx.lineWidth = 1.75;
+      ctx.strokeStyle = dark?"rgba(187,134,252,.65)":"rgba(120,80,200,.55)";
       ctx.lineJoin="round"; ctx.lineCap="round";
       ctx.beginPath();
-      pixels.forEach((p,i)=>i===0?ctx.moveTo(p.px,p.py):ctx.lineTo(p.px,p.py));
+      drawBezier(pixels);
       ctx.stroke();
+      ctx.setLineDash([]);
+
+      // 3) Dot de conexão no ponto anchor (t=0) — mesmo tamanho do terminal dot
+      const anchor = pixels[0];
+      ctx.beginPath();
+      ctx.arc(anchor.px, anchor.py, 4, 0, Math.PI*2);
+      ctx.fillStyle = dark?"rgba(187,134,252,.5)":"rgba(120,80,200,.4)";
+      ctx.fill();
+
       ctx.restore();
     }
   });
@@ -1956,16 +2038,16 @@ function GlucoseChart({glucoseData, history, activeDoses, onRowsUpdate}) {
       trend_text: r.trend_text
     }));
 
-    // Suavização: 3 passes consecutivos do kernel 1-2-1/4
+    // Suavização: 5 passes consecutivos do kernel 1-2-1/4
     // Só suaviza dentro de gaps ≤ 12min para não interpolar buracos reais
-    // 3 passes ≈ filtro Gaussiano σ~1.5 leituras, suficiente para remover microflutações
+    // 5 passes ≈ filtro Gaussiano σ~2 leituras — remove microflutações do sensor
     const smooth1pass = pts => pts.map((p, i) => {
       if(i === 0 || i === pts.length - 1) return p;
       const prev = pts[i-1], next = pts[i+1];
       if(p.x - prev.x > 12*60000 || next.x - p.x > 12*60000) return p;
       return {...p, y: (prev.y + 2*p.y + next.y) / 4};
     });
-    const smoothed = smooth1pass(smooth1pass(smooth1pass(rawPoints)));
+    const smoothed = smooth1pass(smooth1pass(smooth1pass(smooth1pass(smooth1pass(rawPoints)))));
     // Arredonda só no final para evitar acúmulo de erro
     const realPoints = smoothed.map(p => ({...p, y: Math.round(p.y)}));
 
@@ -2003,13 +2085,13 @@ function GlucoseChart({glucoseData, history, activeDoses, onRowsUpdate}) {
           backgroundColor:"transparent",
           pointBackgroundColor:"transparent",
           pointRadius:0,
-          pointHoverRadius:4,
+          pointHoverRadius:5,
           pointHoverBackgroundColor: ctx => {
             const v = ctx.parsed?.y ?? 0;
-            return v<70?"#ef4444":v<=180?"#16a34a":"#ca8a04";
+            return v<70?"#ef4444":v<=180?"#16a34a":"#d97706";
           },
           borderWidth:2.5,
-          tension:0.5,
+          tension:0.45,
           cubicInterpolationMode:'monotone',
           fill:false,
           spanGaps:false,
@@ -2017,14 +2099,14 @@ function GlucoseChart({glucoseData, history, activeDoses, onRowsUpdate}) {
             borderColor: ctx => {
               const v = ctx.p1.parsed.y;
               return v<70
-                ? (dark?"rgba(248,113,113,.9)":"rgba(239,68,68,.8)")
+                ? (dark?"rgba(252,129,129,.88)":"rgba(220,50,50,.82)")
                 : v<=180
-                  ? (dark?"rgba(74,222,128,.8)":"rgba(22,163,74,.7)")
-                  : (dark?"rgba(250,204,21,.85)":"rgba(202,138,4,.85)");
+                  ? (dark?"rgba(74,222,128,.82)":"rgba(22,163,74,.75)")
+                  : (dark?"rgba(251,191,36,.88)":"rgba(217,119,6,.88)");
             }
           }
         }
-        // Prediction drawn by predCurvePlugin (gradient canvas, dashed)
+        // Prediction drawn by predCurvePlugin (bezier canvas, dashed)
       ]},
       options:{
         responsive:true, maintainAspectRatio:false, animation:{duration:400},
@@ -2076,7 +2158,30 @@ function GlucoseChart({glucoseData, history, activeDoses, onRowsUpdate}) {
           }
         }
       },
-      plugins:[targetZonePlugin, doseMarkersPlugin, makePredCurvePlugin(predPoints, dark)]
+      plugins:[targetZonePlugin, doseMarkersPlugin, makePredCurvePlugin(predPoints, dark), {
+        // Terminal dot — ponto vivo colorido no fim da curva real
+        id:"termDot",
+        afterDatasetsDraw(chart){
+          if(!realPoints.length) return;
+          const{ctx,scales:{x,y}}=chart; if(!x||!y) return;
+          const last = realPoints[realPoints.length-1];
+          const px = x.getPixelForValue(last.x);
+          const py = y.getPixelForValue(last.y);
+          const v  = last.y;
+          const color = v<70?(dark?"#f87171":"#dc2626"):v<=180?(dark?"#4ade80":"#16a34a"):(dark?"#fbbf24":"#d97706");
+          const halo  = v<70?"rgba(220,50,50,.18)":v<=180?"rgba(22,163,74,.18)":"rgba(217,119,6,.18)";
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(px, py, 7, 0, Math.PI*2);
+          ctx.fillStyle = halo;
+          ctx.fill();
+          ctx.beginPath();
+          ctx.arc(px, py, 4.5, 0, Math.PI*2);
+          ctx.fillStyle = color;
+          ctx.fill();
+          ctx.restore();
+        }
+      }]
     });
   },[dark, glucoseData, activeDoses]);
 
@@ -3173,7 +3278,7 @@ COB adicionado ao modelo. Previsões atualizadas.`,
   return (
     <SettingsCtx.Provider value={{settings, setSettings}}>
     <ThemeCtx.Provider value={{dark,toggle:()=>setDark(d=>!d)}}>
-      <div style={{height:"100vh",display:"flex",flexDirection:"column",background:"var(--bg)",position:"relative",overflow:"hidden"}}>
+      <div style={{height:"100dvh",display:"flex",flexDirection:"column",background:"var(--bg)",position:"relative",overflow:"hidden"}}>
 
         {/* HEADER — limpo: logo + biblioteca + offline + tema */}
         <div style={{padding:"0 14px",background:"var(--surface)",borderBottom:"1px solid var(--border)",
@@ -3235,7 +3340,7 @@ COB adicionado ao modelo. Previsões atualizadas.`,
 
         {/* GLICEMIA + BIBLIOTECA — chart sempre visível, library como overlay */}
         <div style={{flex:1,position:"relative",minHeight:0,overflow:"hidden",display:"flex",flexDirection:"column",
-          paddingBottom:"var(--bar-h)"}}>
+          paddingBottom:"calc(var(--bar-h) + var(--safe-bottom))"}}>  
           <GlucoseChart glucoseData={glucose} history={history} activeDoses={doses} onRowsUpdate={r=>chartRowsRef.current=r}/>
           {tab==="library" && (
             <div style={{position:"absolute",inset:0,background:"var(--bg)",zIndex:10,overflow:"auto"}}>
@@ -3319,9 +3424,11 @@ COB adicionado ao modelo. Previsões atualizadas.`,
         })()}
 
         {/* ── BOTTOM ACTION BAR — barra fixa com ações principais ── */}
-        <div style={{position:"fixed",bottom:0,left:0,right:0,height:"var(--bar-h)",
+        <div style={{position:"fixed",bottom:0,left:0,right:0,
+          height:"calc(var(--bar-h) + var(--safe-bottom))",
           background:"var(--surface)",borderTop:"1px solid var(--border)",
-          display:"flex",alignItems:"stretch",zIndex:100,
+          display:"flex",alignItems:"flex-start",zIndex:100,
+          paddingBottom:"var(--safe-bottom)",
           backdropFilter:"blur(12px)"}}>
           <button className="bottom-bar-btn" onClick={()=>{setInput(""); setMealOpen(true);}} aria-label="Refeição / Treino">
             <div style={{display:"flex", alignItems:"center", gap:"6px", marginBottom:"2px"}}>
