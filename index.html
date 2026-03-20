@@ -1852,7 +1852,7 @@ function GlucoseChart({glucoseData, history, activeDoses, onRowsUpdate}) {
     }
   };
 
-  // Plugin de marcadores de dose/refeição — com agrupamento (≤15min)
+  // Plugin de marcadores de dose/refeição — agrupamento ≤15min, labels no topo fixo
   const doseMarkersPlugin = {
     id:"dm",
     afterDraw(chart){
@@ -1870,85 +1870,59 @@ function GlucoseChart({glucoseData, history, activeDoses, onRowsUpdate}) {
         .sort((a,b) => a.appliedAt - b.appliedAt);
       if(!events.length) return;
 
-      // 2. Agrupa eventos ≤ 15min de distância entre consecutivos
+      // 2. Agrupa eventos ≤ 15min entre consecutivos
       const groups = [];
       let cur = [events[0]];
       for(let i=1; i<events.length; i++){
         if(events[i].appliedAt - events[i-1].appliedAt <= 15*60000){
           cur.push(events[i]);
-        } else {
-          groups.push(cur);
-          cur = [events[i]];
-        }
+        } else { groups.push(cur); cur = [events[i]]; }
       }
       groups.push(cur);
 
-      // Font size dinâmico: menor na janela 24h para não poluir
       const fs = hoursRef.current >= 24 ? 9 : 10;
       const lineH = fs + 2;
 
-      groups.forEach((grp, gi) => {
-        // Timestamp médio do grupo como posição X
+      groups.forEach(grp => {
         const ts = grp.reduce((s,r)=>s+r.appliedAt,0)/grp.length;
         const px = x.getPixelForValue(ts);
         if(px < ca.left || px > ca.right) return;
 
-        // Agrega doses e carbs do grupo
         const totalDose  = Math.round(grp.reduce((s,r)=>s+(r.appliedDose||0),0)*10)/10;
         const totalCarbs = Math.round(grp.reduce((s,r)=>s+(r.carbs||0),0));
 
-        // Âncora Y: leitura de glicemia mais próxima do ts do grupo
+        // Âncora Y na curva (para a hairline)
         let nearestY = null, minDiff = Infinity;
         rows.forEach(r => {
           const diff = Math.abs(new Date(r.captured_at).getTime() - ts);
           if(diff < minDiff){ minDiff=diff; nearestY=r.value; }
         });
         const pyAnchor = nearestY != null && minDiff < 20*60000
-          ? y.getPixelForValue(nearestY)
-          : (ca.top + ca.bottom) / 2;
+          ? y.getPixelForValue(nearestY) : ca.bottom;
 
-        // Linhas de label
         const lines = [];
-        if(totalDose > 0) lines.push({text:`${totalDose}U`, color:dark?"rgba(45,212,191,.92)":"rgba(13,118,100,.92)"});
-        if(totalCarbs > 0) lines.push({text:`${totalCarbs}g`, color:dark?"rgba(134,239,172,.88)":"rgba(22,140,50,.88)"});
+        if(totalDose > 0) lines.push({text:`${totalDose}U`, color:dark?"rgba(45,212,191,.92)":"rgba(15,118,110,.92)"});
+        if(totalCarbs > 0) lines.push({text:`${totalCarbs}g`, color:dark?"rgba(134,239,172,.88)":"rgba(22,163,74,.9)"});
         if(!lines.length) return;
-
-        const labelH  = lines.length * lineH;
-        const margin  = 7;
-
-        // Alternância: pares acima, ímpares abaixo — ajusta se sair dos limites
-        let above = gi % 2 === 0;
-        let labelTop = above ? pyAnchor - margin - labelH : pyAnchor + margin;
-        if(above && labelTop < ca.top + 4) { above = false; labelTop = pyAnchor + margin; }
-        if(!above && labelTop + labelH > ca.bottom - 4) { above = true; labelTop = pyAnchor - margin - labelH; }
-        labelTop = Math.max(ca.top + 3, Math.min(ca.bottom - labelH - 3, labelTop));
 
         ctx.save();
 
-        // Dot colorido na curva
-        ctx.beginPath();
-        ctx.arc(px, pyAnchor, 3.5, 0, Math.PI*2);
-        ctx.fillStyle = dark ? "rgba(45,212,191,.65)" : "rgba(13,118,100,.55)";
-        ctx.fill();
-
-        // Hairline pontilhada entre label e dot
-        const hairFrom = above ? labelTop + labelH + 2 : labelTop - 2;
-        const hairTo   = above ? pyAnchor - 5 : pyAnchor + 5;
-        ctx.strokeStyle = dark ? "rgba(45,212,191,.18)" : "rgba(13,118,100,.25)";
-        ctx.lineWidth = 0.8;
-        ctx.setLineDash([2,3]);
-        ctx.beginPath();
-        ctx.moveTo(px, hairFrom);
-        ctx.lineTo(px, hairTo);
-        ctx.stroke();
+        // Hairline sólida do topo dos labels até a curva
+        const labelBottom = ca.top + lines.length * lineH + 3;
+        ctx.strokeStyle = dark ? "rgba(45,212,191,.22)" : "rgba(2,100,180,.40)";
+        ctx.lineWidth = 0.75;
         ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.moveTo(px, labelBottom);
+        ctx.lineTo(px, pyAnchor);
+        ctx.stroke();
 
-        // Labels
+        // Labels empilhados no topo
         ctx.font = `700 ${fs}px Outfit, sans-serif`;
         ctx.textAlign = "center";
         lines.forEach((line, li) => {
           ctx.fillStyle = line.color;
-          ctx.fillText(line.text, px, labelTop + (li+1)*lineH - 1);
+          ctx.fillText(line.text, px, ca.top + (li+1)*lineH);
         });
 
         ctx.restore();
@@ -1956,7 +1930,7 @@ function GlucoseChart({glucoseData, history, activeDoses, onRowsUpdate}) {
     }
   };
 
-  // Prediction curve — bezier suave + banda de incerteza discreta + dot no anchor
+  // Prediction curve — Catmull-Rom spline suave + banda discreta
   const makePredCurvePlugin = (predPoints, dark) => ({
     id:"predCurve",
     afterDatasetsDraw(chart){
@@ -1970,58 +1944,58 @@ function GlucoseChart({glucoseData, history, activeDoses, onRowsUpdate}) {
         .filter(p=>p.px>=ca.left-1 && p.px<=ca.right+1);
       if(pixels.length < 2) return;
 
-      // Helper: desenha bezier monotone entre array de pixels
-      const drawBezier = (pts) => {
-        pts.forEach((p,i) => {
-          if(i === 0){ ctx.moveTo(p.px, p.py); return; }
-          const prev = pts[i-1];
-          const cpx1 = prev.px + (p.px - prev.px) * 0.45;
-          const cpx2 = p.px   - (p.px - prev.px) * 0.45;
-          ctx.bezierCurveTo(cpx1, prev.py, cpx2, p.py, p.px, p.py);
-        });
+      // Catmull-Rom → Bezier: tangente em cada ponto = (p[i+1] - p[i-1]) / 2
+      // Produz curva suave que passa por todos os pontos sem S-curves artificiais
+      const catmullBezier = (pts, xKey, yKey) => {
+        const n = pts.length;
+        const tx = new Array(n), ty = new Array(n);
+        for(let i=0; i<n; i++){
+          const prev = pts[Math.max(0, i-1)];
+          const next = pts[Math.min(n-1, i+1)];
+          tx[i] = (next[xKey] - prev[xKey]) / 2;
+          ty[i] = (next[yKey] - prev[yKey]) / 2;
+        }
+        ctx.moveTo(pts[0][xKey], pts[0][yKey]);
+        for(let i=1; i<n; i++){
+          const p0=pts[i-1], p1=pts[i];
+          const dx = p1[xKey]-p0[xKey];
+          ctx.bezierCurveTo(
+            p0[xKey] + tx[i-1]/3, p0[yKey] + ty[i-1]/3,
+            p1[xKey] - tx[i]/3,   p1[yKey] - ty[i]/3,
+            p1[xKey], p1[yKey]
+          );
+        }
       };
 
-      // 1) Banda de incerteza — area fill suave, muito discreta
+      // 1) Banda de incerteza — fill suave com Catmull-Rom
       const bandPixels = pixels.filter(p=>p.pyLow!=null&&p.pyHigh!=null);
       if(bandPixels.length >= 2){
         ctx.save();
         ctx.beginPath();
-        // Borda superior
-        bandPixels.forEach((p,i)=>{
-          if(i===0){ctx.moveTo(p.px,p.pyHigh);return;}
-          const prev=bandPixels[i-1];
-          const cx1=prev.px+(p.px-prev.px)*0.45, cx2=p.px-(p.px-prev.px)*0.45;
-          ctx.bezierCurveTo(cx1,prev.pyHigh,cx2,p.pyHigh,p.px,p.pyHigh);
-        });
-        // Borda inferior (reversa)
-        [...bandPixels].reverse().forEach((p,i)=>{
-          const cx1=p.px+(bandPixels[bandPixels.length-1-i]?.px-p.px||0)*0.1;
-          ctx.lineTo(p.px,p.pyLow);
+        catmullBezier(bandPixels, 'px', 'pyHigh');
+        [...bandPixels].reverse().forEach((p,i,arr)=>{
+          if(i===0) ctx.lineTo(p.px, p.pyLow);
+          else {
+            const prev=arr[i-1];
+            ctx.lineTo(p.px, p.pyLow);
+          }
         });
         ctx.closePath();
-        ctx.fillStyle = dark?"rgba(187,134,252,.07)":"rgba(120,80,200,.06)";
+        ctx.fillStyle = dark?"rgba(187,134,252,.07)":"rgba(120,80,200,.055)";
         ctx.fill();
         ctx.restore();
       }
 
-      // 2) Linha pontilhada de previsão — bezier, tom suave
+      // 2) Linha pontilhada — Catmull-Rom, tom suave
       ctx.save();
       ctx.setLineDash([5,4]);
       ctx.lineWidth = 1.75;
-      ctx.strokeStyle = dark?"rgba(187,134,252,.65)":"rgba(120,80,200,.55)";
+      ctx.strokeStyle = dark?"rgba(187,134,252,.62)":"rgba(120,80,200,.52)";
       ctx.lineJoin="round"; ctx.lineCap="round";
       ctx.beginPath();
-      drawBezier(pixels);
+      catmullBezier(pixels, 'px', 'py');
       ctx.stroke();
       ctx.setLineDash([]);
-
-      // 3) Dot de conexão no ponto anchor (t=0) — mesmo tamanho do terminal dot
-      const anchor = pixels[0];
-      ctx.beginPath();
-      ctx.arc(anchor.px, anchor.py, 4, 0, Math.PI*2);
-      ctx.fillStyle = dark?"rgba(187,134,252,.5)":"rgba(120,80,200,.4)";
-      ctx.fill();
-
       ctx.restore();
     }
   });
@@ -2158,30 +2132,7 @@ function GlucoseChart({glucoseData, history, activeDoses, onRowsUpdate}) {
           }
         }
       },
-      plugins:[targetZonePlugin, doseMarkersPlugin, makePredCurvePlugin(predPoints, dark), {
-        // Terminal dot — ponto vivo colorido no fim da curva real
-        id:"termDot",
-        afterDatasetsDraw(chart){
-          if(!realPoints.length) return;
-          const{ctx,scales:{x,y}}=chart; if(!x||!y) return;
-          const last = realPoints[realPoints.length-1];
-          const px = x.getPixelForValue(last.x);
-          const py = y.getPixelForValue(last.y);
-          const v  = last.y;
-          const color = v<70?(dark?"#f87171":"#dc2626"):v<=180?(dark?"#4ade80":"#16a34a"):(dark?"#fbbf24":"#d97706");
-          const halo  = v<70?"rgba(220,50,50,.18)":v<=180?"rgba(22,163,74,.18)":"rgba(217,119,6,.18)";
-          ctx.save();
-          ctx.beginPath();
-          ctx.arc(px, py, 7, 0, Math.PI*2);
-          ctx.fillStyle = halo;
-          ctx.fill();
-          ctx.beginPath();
-          ctx.arc(px, py, 4.5, 0, Math.PI*2);
-          ctx.fillStyle = color;
-          ctx.fill();
-          ctx.restore();
-        }
-      }]
+      plugins:[targetZonePlugin, doseMarkersPlugin, makePredCurvePlugin(predPoints, dark)]
     });
   },[dark, glucoseData, activeDoses]);
 
@@ -3427,7 +3378,7 @@ COB adicionado ao modelo. Previsões atualizadas.`,
         <div style={{position:"fixed",bottom:0,left:0,right:0,
           height:"calc(var(--bar-h) + var(--safe-bottom))",
           background:"var(--surface)",borderTop:"1px solid var(--border)",
-          display:"flex",alignItems:"flex-start",zIndex:100,
+          display:"flex",alignItems:"stretch",zIndex:100,
           paddingBottom:"var(--safe-bottom)",
           backdropFilter:"blur(12px)"}}>
           <button className="bottom-bar-btn" onClick={()=>{setInput(""); setMealOpen(true);}} aria-label="Refeição / Treino">
