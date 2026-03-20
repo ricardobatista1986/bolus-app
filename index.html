@@ -1873,7 +1873,7 @@ function GlucoseChart({glucoseData, history, activeDoses, onRowsUpdate}) {
       const groups = [];
       let cur = [events[0]];
       for(let i=1; i<events.length; i++){
-        if(events[i].appliedAt - events[i-1].appliedAt <= 30*60000){
+        if(events[i].appliedAt - events[i-1].appliedAt <= 60*60000){
           cur.push(events[i]);
         } else { groups.push(cur); cur = [events[i]]; }
       }
