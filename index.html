@@ -1914,66 +1914,41 @@ function GlucoseChart({glucoseData, history, activeDoses, onRowsUpdate}) {
         ctx.moveTo(px, labelBottom);
         ctx.lineTo(px, pyAnchor);
         ctx.stroke();
-        // Linha 1: ícone seringa + dose (y=12); linha 2: ícone talheres + carbo (y=24)
-        // Ícones desenhados em canvas com os mesmos traços dos SVG da UI
-        const ico = 9;   // tamanho do ícone em px
-        const gap = 3;   // espaço entre ícone e texto
-
-        // Helper: desenha ícone seringa (traços simplificados do IcoSyringe)
+        // Linha 1: dose (y=12); linha 2: carbo (y=24) — sem ícones, U/g autoexplicativos
+        /* ÍCONES DESATIVADOS (preservados para reativação futura)
+        const ico = 9, gap = 3;
         const drawSyringe = (cx, cy, color) => {
-          ctx.save();
-          ctx.strokeStyle = color; ctx.lineWidth = 1.2;
+          ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = 1.2;
           ctx.lineCap = "round"; ctx.lineJoin = "round";
-          const s = ico / 8;
-          ctx.translate(cx - ico/2, cy - ico/2);
-          ctx.scale(s, s);
+          const s = ico/8; ctx.translate(cx-ico/2, cy-ico/2); ctx.scale(s,s);
           ctx.beginPath(); ctx.moveTo(2,6); ctx.lineTo(6,2); ctx.stroke();
           ctx.beginPath(); ctx.moveTo(5.5,1); ctx.lineTo(7,2.5); ctx.lineTo(6,3.5); ctx.lineTo(4.5,2); ctx.closePath(); ctx.stroke();
           ctx.beginPath(); ctx.moveTo(1,7); ctx.lineTo(2.2,5.8); ctx.stroke();
           ctx.restore();
         };
-
-        // Helper: desenha ícone talheres (fork + knife simplificados do IcoUtensils)
         const drawUtensils = (cx, cy, color) => {
-          ctx.save();
-          ctx.strokeStyle = color; ctx.lineWidth = 1.2;
+          ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = 1.2;
           ctx.lineCap = "round"; ctx.lineJoin = "round";
-          const s = ico / 8;
-          ctx.translate(cx - ico/2, cy - ico/2);
-          ctx.scale(s, s);
-          // garfo: linha central
+          const s = ico/8; ctx.translate(cx-ico/2, cy-ico/2); ctx.scale(s,s);
           ctx.beginPath(); ctx.moveTo(3,1); ctx.lineTo(3,7); ctx.stroke();
-          // garfo: dentes
           ctx.beginPath(); ctx.moveTo(2,1); ctx.lineTo(2,3); ctx.stroke();
           ctx.beginPath(); ctx.moveTo(4,1); ctx.lineTo(4,3); ctx.stroke();
-          // faca
           ctx.beginPath(); ctx.moveTo(6,1); ctx.lineTo(6,7); ctx.stroke();
           ctx.beginPath(); ctx.moveTo(6,1); ctx.quadraticCurveTo(7.5,2,6,4); ctx.stroke();
           ctx.restore();
         };
+        */
 
-        ctx.font = "bold 10px Outfit, sans-serif";
-        ctx.textAlign = "left";
-
+        ctx.font = "bold 11px Outfit, sans-serif";
+        ctx.textAlign = "center";
         if(totalDose > 0) {
-          const doseColor = dark ? "rgba(45,212,191,.9)" : "rgba(15,118,110,.9)";
-          const label = `${totalDose}U`;
-          const tw = ctx.measureText(label).width;
-          const totalW = ico + gap + tw;
-          drawSyringe(px - totalW/2 + ico/2, ca.top + 12 - ico/2 + 1, doseColor);
-          ctx.fillStyle = doseColor;
-          ctx.fillText(label, px - totalW/2 + ico + gap, ca.top + 12);
+          ctx.fillStyle = dark ? "rgba(45,212,191,.9)" : "rgba(15,118,110,.9)";
+          ctx.fillText(`${totalDose}U`, px, ca.top + 12);
         }
         if(totalCarbs > 0) {
-          const carbColor = dark ? "rgba(22,163,74,.85)" : "rgba(22,163,74,.9)";
-          const label = `${totalCarbs}g`;
-          const tw = ctx.measureText(label).width;
-          const totalW = ico + gap + tw;
-          drawUtensils(px - totalW/2 + ico/2, ca.top + 24 - ico/2 + 1, carbColor);
-          ctx.fillStyle = carbColor;
-          ctx.fillText(label, px - totalW/2 + ico + gap, ca.top + 24);
+          ctx.fillStyle = dark ? "rgba(22,163,74,.85)" : "rgba(22,163,74,.9)";
+          ctx.fillText(`${totalCarbs}g`, px, ca.top + 24);
         }
-        ctx.textAlign = "center";
         ctx.restore();
       });
     }
