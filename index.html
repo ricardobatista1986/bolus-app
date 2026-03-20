@@ -1869,11 +1869,16 @@ function GlucoseChart({glucoseData, history, activeDoses, onRowsUpdate}) {
         .sort((a,b) => a.appliedAt - b.appliedAt);
       if(!events.length) return;
 
-      // Agrupa eventos ≤ 30min entre consecutivos
+      // Agrupa eventos ≤ 15min entre consecutivos
+      // Threshold dinâmico por janela: 45min (8h) / 75min (12h) / 150min (24h)
+      const groupMs = hoursRef.current >= 24 ? 150*60000
+                    : hoursRef.current >= 12  ?  75*60000
+                    :                            45*60000;
+
       const groups = [];
       let cur = [events[0]];
       for(let i=1; i<events.length; i++){
-        if(events[i].appliedAt - events[i-1].appliedAt <= 60*60000){
+        if(events[i].appliedAt - events[i-1].appliedAt <= groupMs){
           cur.push(events[i]);
         } else { groups.push(cur); cur = [events[i]]; }
       }
@@ -1900,8 +1905,8 @@ function GlucoseChart({glucoseData, history, activeDoses, onRowsUpdate}) {
           : ca.bottom;
 
         ctx.save();
-        // Hairline: from label bottom to data point on curve (sem dot)
-        const labelBottom = ca.top + (totalCarbs > 0 ? 30 : 18);
+        // Hairline sempre 2 linhas de altura (dose + carbo fixos nas posições)
+        const labelBottom = ca.top + 28;
         ctx.strokeStyle = dark ? "rgba(45,212,191,.25)" : "rgba(2,100,180,.55)";
         ctx.lineWidth = 0.75;
         ctx.setLineDash([]);
@@ -1909,16 +1914,17 @@ function GlucoseChart({glucoseData, history, activeDoses, onRowsUpdate}) {
         ctx.moveTo(px, labelBottom);
         ctx.lineTo(px, pyAnchor);
         ctx.stroke();
-        // Labels
+        // Linha 1: dose (sempre y=12, mesmo se vazia — mantém posição do carbo)
         ctx.font = "bold 10px Outfit, sans-serif";
         ctx.textAlign = "center";
         if(totalDose > 0) {
           ctx.fillStyle = dark ? "rgba(45,212,191,.9)" : "rgba(15,118,110,.9)";
           ctx.fillText(`💉${totalDose}U`, px, ca.top + 12);
         }
+        // Linha 2: carbo sempre em y=24
         if(totalCarbs > 0) {
           ctx.fillStyle = dark ? "rgba(22,163,74,.85)" : "rgba(22,163,74,.9)";
-          ctx.fillText(`🍽️${totalCarbs}g`, px, ca.top + (totalDose > 0 ? 24 : 12));
+          ctx.fillText(`🍽️${totalCarbs}g`, px, ca.top + 24);
         }
         ctx.restore();
       });
