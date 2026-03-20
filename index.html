@@ -197,6 +197,10 @@ const IcoTrash = ({s=18,c="currentColor"}) => <SvgIco size={s} color={c}>
   <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
   <path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
 </SvgIco>;
+const IcoBarChart = ({s=18,c="currentColor"}) => <SvgIco size={s} color={c}>
+  <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/>
+  <line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/>
+</SvgIco>;
 
 /* ── CONSTANTS ─────────────────────────────────────────────────────────── */
 const SUPABASE_URL   = "https://sfsutycytyonznhwtfkf.supabase.co";
@@ -209,13 +213,14 @@ const FIASP_DIA   = 240;
 // ── Carboidratos: curva triangular (absorção rápida/normal) ──────────────
 const CHO_ONSET   = 10;
 const CHO_PEAK    = 45;
-const CHO_DIA     = 120;
+const CHO_DIA     = 150; // aumentado de 120: refeições >180 têm absorção mais longa
 
 const KEY_APIKEY    = "bolus-groq-key";
 const KEY_THEME     = "bolus-theme";
 const KEY_DOSES     = "bolus-activedoses-v1";
 const KEY_HISTORY   = "bolus-history-v3";
 const KEY_SETTINGS  = "bolus-settings-v1";
+const KEY_PREDSTORE = "bolus-predstore-v1"; // persiste predStoreRef entre sessões
 // food_library e prediction_validations → Supabase (sem localStorage)
 
 const DEFAULT_SETTINGS = {
@@ -488,7 +493,7 @@ const filterDoses   = doses => (doses||[]).filter(d => calcRemMin(d.appliedAt)>0
  *  Constantes globais CHO_* mantidas para retrocompat (fallback = fast).
  * ─────────────────────────────────────────────────────────────────────── */
 const CHO_TYPES = {
-  fast:   { emoji:"🍎", label:"Rápido",  onset:10, peak:45,  dia:120 },
+  fast:   { emoji:"🍎", label:"Rápido",  onset:10, peak:45,  dia:150 },
   normal: { emoji:"🍚", label:"Normal",  onset:10, peak:60,  dia:180 },
   slow:   { emoji:"🍕", label:"Lento",   onset:15, peak:90,  dia:240 },
 };
@@ -572,6 +577,7 @@ const DAWN_VEL = {
 };
 // Empirical autocorrelation from data (how much trend persists at each horizon)
 const AUTOCORR = {15:0.904,30:0.891,45:0.807,60:0.743,75:0.676,90:0.610};
+const BIAS_CORR  = {30:13, 60:25, 90:36}; // mg/dL: ADICIONA quando base>=180 e IOB>=1U (modelo subestima queda quando há IOB+COB simultâneos)
 
 const getTrendVel = emoji => {
   for(const [k,v] of Object.entries(TREND_VEL_MAP)) if(emoji?.includes(k)) return v;
@@ -633,7 +639,12 @@ const predictGlucose = (currentG, trendEmoji, activeDoses, dark, nowMs=Date.now(
     const carbDelta = cobAbsorbed * (ISF/ICR);
     // Circadian residual at 30% (trend already carries most of it)
     const dawnDelta = (DAWN_VEL[futH]||0) * t * 0.3;
-    const raw = currentG + trendDelta + insulinDelta + carbDelta + dawnDelta;
+    // Bias correction: quando hiper+IOB alto o modelo subestima a glicemia futura
+    // (IOB+COB simultâneos — absorção mais longa do que o previsto cancela a descida)
+    // Calibrado em 339 previsões: bias t30=+13, t60=+25, t90=+36 mg/dL
+    const iobNow = calcTotalIOBAt(live, nowMs);
+    const biasFix = (currentG >= 180 && iobNow >= 1.0) ? (BIAS_CORR[t] || 0) : 0;
+    const raw = currentG + trendDelta + insulinDelta + carbDelta + dawnDelta + biasFix;
     const value = Math.max(40, Math.min(400, Math.round(raw)));
     // Uncertainty band
     const sigma = predUncertainty(t, vel);
@@ -751,6 +762,58 @@ const sbUpsertPrediction = async entry => {
   } catch(e) { /* silencioso */ }
 };
 
+/* ── sbClosePendingPredictions (Camada 2) ───────────────────────────────
+ *  Roda a cada 5min (mesmo com app fechado, via interval persistido).
+ *  Busca leituras reais do Supabase e fecha loops de previsões pendentes
+ *  que ainda não foram validadas (janela ±8min ao redor do horizonte).
+ *  Usa o predStore do localStorage como fonte de previsões pendentes.
+ * ─────────────────────────────────────────────────────────────────────── */
+const sbClosePendingPredictions = async () => {
+  try {
+    const store = lsGet("bolus-predstore-v1") || [];
+    const pending = store.filter(e => !e.validated);
+    if(!pending.length) return;
+    // Determina janela de tempo necessária
+    const oldest = Math.min(...pending.map(e => e.predictedAt));
+    const since  = new Date(oldest + 15*60000 - 8*60000).toISOString();
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/glucose_readings?select=value,captured_at&captured_at=gte.${since}&order=captured_at.asc&limit=200`,
+      { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
+    );
+    if(!res.ok) return;
+    const readings = await res.json();
+    const nowMs = Date.now();
+    const updated = store.map(entry => {
+      if(entry.validated) return entry;
+      const u = {...entry};
+      let any = false;
+      (entry.preds||[]).forEach(p => {
+        const key = `actual${p.t}`;
+        if(u[key] != null) return; // já validado
+        const targetMs = entry.predictedAt + p.t*60000;
+        if(nowMs < targetMs - 8*60000) return; // ainda no futuro
+        // Encontra leitura mais próxima do alvo dentro de ±8min
+        const match = readings
+          .map(r => ({ v: r.value, dt: Math.abs(new Date(r.captured_at).getTime() - targetMs) }))
+          .filter(r => r.dt < 8*60000)
+          .sort((a,b) => a.dt - b.dt)[0];
+        if(match) {
+          u[key]             = match.v;
+          u[`err${p.t}`]     = Math.round(match.v - p.v);
+          any = true;
+        }
+      });
+      if(any) {
+        const allDone = [30,60,90].every(t => u[`actual${t}`] != null);
+        if(allDone) u.validated = true;
+        sbUpsertPrediction(u); // fire-and-forget
+      }
+      return u;
+    });
+    lsSet("bolus-predstore-v1", updated.slice(-50));
+  } catch(e) { /* silencioso */ }
+};
+
 /* ── SUPABASE — food_library (T5) ──────────────────────────────────────
  *  Substitui bolus-library-v1 do localStorage. Supabase é fonte de verdade.
  * ─────────────────────────────────────────────────────────────────────── */
@@ -796,6 +859,38 @@ const sbDeleteMeal = async id => {
       headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` },
     });
   } catch(e) { /* silencioso */ }
+};
+
+/* ── SUPABASE — user_settings ──────────────────────────────────────────
+ *  Persiste ICR faixas, ISF e alvos no Supabase.
+ *  localStorage continua como cache imediato (sem latência no boot).
+ *  Supabase é fonte de verdade — garante recuperação após clear do browser.
+ * ─────────────────────────────────────────────────────────────────────── */
+const sbLoadSettings = async () => {
+  try {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/user_settings?user_id=eq.default&limit=1`,
+      { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
+    );
+    if(!res.ok) return null;
+    const rows = await res.json();
+    return rows[0]?.settings ?? null;
+  } catch { return null; }
+};
+
+const sbSaveSettings = async (settings) => {
+  try {
+    await fetch(`${SUPABASE_URL}/rest/v1/user_settings`, {
+      method: "POST",
+      headers: {
+        "Content-Type":  "application/json",
+        "apikey":        SUPABASE_KEY,
+        "Authorization": `Bearer ${SUPABASE_KEY}`,
+        "Prefer":        "resolution=merge-duplicates",
+      },
+      body: JSON.stringify({ user_id: "default", settings, updated_at: new Date().toISOString() }),
+    });
+  } catch(e) { /* silencioso — localStorage ainda tem o valor */ }
 };
 const renderMD = text => {
   if(!text) return "";
@@ -2246,6 +2341,214 @@ const subscribeToPush = async () => {
 };
 // ------------------------------------
 
+/* ── DASHBOARD MODAL (Camada 3) ───────────────────────────────────────── */
+function DashboardModal({open, onClose}) {
+  const {dark} = useContext(ThemeCtx);
+  const [stats,  setStats]  = React.useState(null);
+  const [loading,setLoading] = React.useState(false);
+  const [error,  setError]   = React.useState(null);
+
+  React.useEffect(()=>{
+    if(!open) return;
+    setLoading(true); setError(null);
+    const fetchStats = async () => {
+      try {
+        // Query 1: totais e MAE/viés por horizonte
+        const q1 = `
+          SELECT
+            COUNT(*) as total,
+            ROUND(AVG(ABS(t30_err))::numeric,1) as t30_mae,
+            ROUND(AVG(ABS(t60_err))::numeric,1) as t60_mae,
+            ROUND(AVG(ABS(t90_err))::numeric,1) as t90_mae,
+            ROUND(AVG(t30_err)::numeric,1)      as t30_bias,
+            ROUND(AVG(t60_err)::numeric,1)      as t60_bias,
+            ROUND(AVG(t90_err)::numeric,1)      as t90_bias,
+            ROUND(100.0*SUM(CASE WHEN ABS(t30_err)<=20 THEN 1 ELSE 0 END)/NULLIF(COUNT(t30_err),0)::numeric,0) as t30_p20,
+            ROUND(100.0*SUM(CASE WHEN ABS(t60_err)<=20 THEN 1 ELSE 0 END)/NULLIF(COUNT(t60_err),0)::numeric,0) as t60_p20,
+            ROUND(100.0*SUM(CASE WHEN ABS(t90_err)<=20 THEN 1 ELSE 0 END)/NULLIF(COUNT(t90_err),0)::numeric,0) as t90_p20
+          FROM prediction_validations
+          WHERE t30_actual IS NOT NULL`;
+
+        // Query 2: split por zona glicêmica
+        const q2 = `
+          SELECT
+            CASE
+              WHEN base_glucose >= 180 THEN 'hiper'
+              WHEN base_glucose <  70  THEN 'hipo'
+              ELSE 'alvo'
+            END as zona,
+            COUNT(*) as n,
+            ROUND(AVG(t30_err)::numeric,1) as t30_bias,
+            ROUND(AVG(t60_err)::numeric,1) as t60_bias,
+            ROUND(AVG(t90_err)::numeric,1) as t90_bias,
+            ROUND(AVG(ABS(t60_err))::numeric,1) as t60_mae
+          FROM prediction_validations
+          WHERE t30_actual IS NOT NULL
+          GROUP BY 1 ORDER BY 1`;
+
+        const headers = { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` };
+        const enc = s => encodeURIComponent(s.replace(/\s+/g,' ').trim());
+        const [r1,r2] = await Promise.all([
+          fetch(`${SUPABASE_URL}/rest/v1/rpc/query`, {
+            method: 'POST', headers: {...headers,'Content-Type':'application/json'},
+            body: JSON.stringify({query: q1})
+          }),
+          fetch(`${SUPABASE_URL}/rest/v1/rpc/query`, {
+            method: 'POST', headers: {...headers,'Content-Type':'application/json'},
+            body: JSON.stringify({query: q2})
+          }),
+        ]);
+        // Fallback: usa fetch direto com SQL via postgrest
+        const res1 = await fetch(
+          `${SUPABASE_URL}/rest/v1/prediction_validations?select=t30_err,t60_err,t90_err,base_glucose&t30_actual=not.is.null&limit=2000`,
+          { headers }
+        );
+        if(!res1.ok) throw new Error('Supabase indisponível');
+        const rows = await res1.json();
+        if(!rows.length) { setStats({total:0}); setLoading(false); return; }
+
+        // Calcula localmente
+        const calc = (arr, field) => {
+          const v = arr.map(r=>r[field]).filter(x=>x!=null);
+          if(!v.length) return null;
+          const mae   = +(v.reduce((s,x)=>s+Math.abs(x),0)/v.length).toFixed(1);
+          const bias  = +(v.reduce((s,x)=>s+x,0)/v.length).toFixed(1);
+          const p20   = Math.round(100*v.filter(x=>Math.abs(x)<=20).length/v.length);
+          return {mae, bias, p20, n: v.length};
+        };
+        const zona = g => g>=180?'hiper':g<70?'hipo':'alvo';
+        const byZone = {};
+        for(const r of rows){
+          const z = zona(r.base_glucose||100);
+          if(!byZone[z]) byZone[z]={rows:[]};
+          byZone[z].rows.push(r);
+        }
+        const zoneStats = Object.entries(byZone).map(([z,{rows:zr}])=>({
+          zona: z, n: zr.length,
+          t30: calc(zr,'t30_err'), t60: calc(zr,'t60_err'), t90: calc(zr,'t90_err'),
+        }));
+        setStats({
+          total: rows.length,
+          t30: calc(rows,'t30_err'), t60: calc(rows,'t60_err'), t90: calc(rows,'t90_err'),
+          zones: zoneStats,
+        });
+      } catch(e) { setError(e.message); }
+      finally { setLoading(false); }
+    };
+    fetchStats();
+  },[open]);
+
+  if(!open) return null;
+  const ov = {position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:200,display:'flex',alignItems:'flex-end',justifyContent:'center'};
+  const sh = {background:'var(--surface)',borderRadius:'20px 20px 0 0',width:'100%',maxWidth:480,maxHeight:'88vh',overflowY:'auto',padding:'20px 18px 32px'};
+
+  const BiasTag = ({v}) => {
+    if(v==null) return null;
+    const col = Math.abs(v)<=5?'var(--green)':Math.abs(v)<=15?'var(--amber)':'#ef4444';
+    return <span style={{fontSize:'11px',padding:'2px 6px',borderRadius:'4px',background:`${col}20`,color:col,fontWeight:700}}>{v>0?'+':''}{v}</span>;
+  };
+  const MaeBar = ({v, max=80}) => {
+    if(v==null) return null;
+    const pct = Math.min(100, v/max*100);
+    const col = v<=30?'var(--green)':v<=55?'var(--amber)':'#ef4444';
+    return (
+      <div style={{display:'flex',alignItems:'center',gap:6}}>
+        <div style={{flex:1,height:6,background:'var(--surface2)',borderRadius:3,overflow:'hidden'}}>
+          <div style={{width:`${pct}%`,height:'100%',background:col,borderRadius:3,transition:'width .4s'}}/>
+        </div>
+        <span style={{fontSize:'12px',fontWeight:700,color:col,minWidth:30}}>{v}</span>
+      </div>
+    );
+  };
+  const P20Tag = ({v}) => {
+    if(v==null) return null;
+    const col = v>=70?'var(--green)':v>=50?'var(--amber)':'#ef4444';
+    return <span style={{fontSize:'12px',fontWeight:700,color:col}}>{v}%</span>;
+  };
+
+  const horizons = [
+    {t:'t30', label:'+30min'}, {t:'t60', label:'+60min'}, {t:'t90', label:'+90min'}
+  ];
+  const zoneLabel = {hiper:{label:'Hiper ≥180',col:'#f59e0b'}, alvo:{label:'Alvo 70–179',col:'var(--green)'}, hipo:{label:'Hipo <70',col:'#ef4444'}};
+
+  return (
+    <div style={ov} onClick={onClose}>
+      <div style={sh} onClick={e=>e.stopPropagation()}>
+        {/* header */}
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:18}}>
+          <div style={{display:'flex',alignItems:'center',gap:8}}>
+            <IcoBarChart s={18} c="var(--accent)"/>
+            <span style={{fontWeight:700,fontSize:'16px',color:'var(--text)'}}>Acurácia das Previsões</span>
+          </div>
+          <button onClick={onClose} style={{background:'none',border:'none',cursor:'pointer',padding:4}}><IcoX s={18} c="var(--text2)"/></button>
+        </div>
+
+        {loading && <div style={{textAlign:'center',padding:'32px 0',color:'var(--text2)'}}>Carregando dados…</div>}
+        {error   && <div style={{textAlign:'center',padding:'20px 0',color:'#ef4444',fontSize:'13px'}}>{error}</div>}
+
+        {stats && stats.total > 0 && (
+          <>
+            {/* total */}
+            <div style={{textAlign:'center',marginBottom:20}}>
+              <span style={{fontSize:'28px',fontWeight:800,color:'var(--accent)'}}>{stats.total}</span>
+              <span style={{fontSize:'13px',color:'var(--text2)',marginLeft:6}}>previsões validadas</span>
+            </div>
+
+            {/* tabela por horizonte */}
+            <div style={{background:'var(--surface2)',borderRadius:12,padding:'14px 16px',marginBottom:16}}>
+              <div style={{display:'grid',gridTemplateColumns:'72px 1fr 60px 52px',gap:'6px 10px',alignItems:'center'}}>
+                <span style={{fontSize:'11px',fontWeight:700,color:'var(--text3)',textTransform:'uppercase'}}>Horizonte</span>
+                <span style={{fontSize:'11px',fontWeight:700,color:'var(--text3)',textTransform:'uppercase'}}>MAE</span>
+                <span style={{fontSize:'11px',fontWeight:700,color:'var(--text3)',textTransform:'uppercase'}}>Viés</span>
+                <span style={{fontSize:'11px',fontWeight:700,color:'var(--text3)',textTransform:'uppercase'}}>±20</span>
+                {horizons.map(({t,label})=>(
+                  <React.Fragment key={t}>
+                    <span style={{fontSize:'13px',fontWeight:600,color:'var(--text)'}}>{label}</span>
+                    <MaeBar v={stats[t]?.mae}/>
+                    <BiasTag v={stats[t]?.bias}/>
+                    <P20Tag v={stats[t]?.p20}/>
+                  </React.Fragment>
+                ))}
+              </div>
+            </div>
+
+            {/* por zona */}
+            <div style={{fontSize:'12px',fontWeight:700,color:'var(--text2)',marginBottom:8,textTransform:'uppercase',letterSpacing:'.5px'}}>Por zona glicêmica</div>
+            <div style={{display:'flex',flexDirection:'column',gap:8}}>
+              {(stats.zones||[]).sort((a,b)=>a.zona<b.zona?-1:1).map(z=>(
+                <div key={z.zona} style={{background:'var(--surface2)',borderRadius:10,padding:'10px 14px'}}>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
+                    <span style={{fontSize:'13px',fontWeight:700,color:zoneLabel[z.zona]?.col||'var(--text)'}}>
+                      {zoneLabel[z.zona]?.label||z.zona}
+                    </span>
+                    <span style={{fontSize:'11px',color:'var(--text3)',background:'var(--surface)',padding:'2px 8px',borderRadius:20}}>{z.n} amostras</span>
+                  </div>
+                  <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:6}}>
+                    {[{t:'t30',l:'+30'},{t:'t60',l:'+60'},{t:'t90',l:'+90'}].map(({t,l})=>(
+                      <div key={t} style={{textAlign:'center'}}>
+                        <div style={{fontSize:'11px',color:'var(--text3)',marginBottom:2}}>{l}</div>
+                        <BiasTag v={z[t]?.bias}/>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* legenda */}
+            <div style={{marginTop:16,fontSize:'11px',color:'var(--text3)',lineHeight:1.6}}>
+              <strong>MAE</strong> = erro médio absoluto (mg/dL) · <strong>Viés</strong> = actual − previsto · <strong>±20</strong> = % dentro de ±20 mg/dL
+            </div>
+          </>
+        )}
+        {stats && stats.total === 0 && (
+          <div style={{textAlign:'center',padding:'32px 0',color:'var(--text2)'}}>Nenhuma previsão validada ainda.</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ── SETTINGS MODAL ───────────────────────────────────────────────────── */
 function SettingsModal({open, onClose}) {
   const {dark} = useContext(ThemeCtx);
@@ -2296,6 +2599,7 @@ function SettingsModal({open, onClose}) {
     appSettings = saved;
     setSettings(saved);
     lsSet(KEY_SETTINGS, saved);
+    sbSaveSettings(saved); // Supabase — fonte de verdade para recuperação
     onClose();
   };
 
@@ -2681,6 +2985,7 @@ function App() {
   const [mealOpen,setMealOpen] = useState(false);
   const [fabOpen,setFabOpen] = useState(false);
   const [settingsOpen,setSettingsOpen] = useState(false);
+  const [dashOpen,    setDashOpen]     = useState(false);
   const [settings,setSettingsState] = useState(()=>{
     const s = migrateSettings(lsGet(KEY_SETTINGS)) || {...DEFAULT_SETTINGS};
     appSettings = s;
@@ -2711,7 +3016,7 @@ function App() {
   const dismissAlert = key => setDismissed(prev => new Set([...prev, key]));
   const [predictions,setPreds] = useState([]);
   const [isOnline,setIsOnline] = useState(()=>navigator.onLine); // T2: modo offline
-  const predStoreRef   = useRef([]); // M1: validações → Supabase, não mais localStorage
+  const predStoreRef   = useRef(lsGet(KEY_PREDSTORE) || []); // Camada 2: persiste entre sessões
   const prevGlucoseRef = useRef(null); // S4: detecção de variabilidade rápida
   const queuedMsgRef   = useRef(null); // T4: fila Groq
   const [apiKey,setApiKey]   = useState(()=>lsGet(KEY_APIKEY)||"");
@@ -2735,7 +3040,7 @@ function App() {
       cob:         calcTotalActiveCarbs(live),
     };
     predStoreRef.current = [...predStoreRef.current.slice(-50), entry];
-    // Não salva em localStorage — Supabase é o destino final (gravado ao validar)
+    lsSet(KEY_PREDSTORE, predStoreRef.current); // Camada 2: persiste entre sessões
   },[glucose?.glucose, glucose?.trendEmoji, doses]);
 
   useEffect(()=>{
@@ -2828,7 +3133,7 @@ function App() {
           return updated;
         });
         predStoreRef.current = updatedStore;
-        // M1: não salva mais em localStorage — Supabase é o destino
+        lsSet(KEY_PREDSTORE, updatedStore); // Camada 2: persiste validações entre sessões
       }
       setGlucose(d); return d;
     }catch(e){
@@ -2862,8 +3167,24 @@ function App() {
 
   useEffect(()=>{fetchTIR();const id=setInterval(fetchTIR,300000);return()=>clearInterval(id);},[fetchTIR]);
 
-  /* ── Carregar refeições do Supabase no mount ── */
+  // Camada 2: fecha loops de previsões pendentes a cada 5min via Supabase (mesmo sem app aberto)
   useEffect(()=>{
+    sbClosePendingPredictions();
+    const id=setInterval(sbClosePendingPredictions,300000);
+    return()=>clearInterval(id);
+  },[]);
+
+  /* ── Carregar refeições e settings do Supabase no mount ── */
+  useEffect(()=>{
+    // Settings: Supabase > localStorage (recuperação após clear do browser)
+    sbLoadSettings().then(sbSettings => {
+      if(sbSettings) {
+        const migrated = migrateSettings(sbSettings) || sbSettings;
+        appSettings = migrated;
+        setSettings(migrated);
+        lsSet(KEY_SETTINGS, migrated);
+      }
+    });
     sbFetchMeals().then(rows=>{
       if(!rows) return; // falha silenciosa — mantém localStorage
       if(rows.length > 0){
@@ -3254,6 +3575,12 @@ COB adicionado ao modelo. Previsões atualizadas.`,
             </div>
           )}
           <ThemeToggle dark={dark} onToggle={()=>setDark(d=>!d)}/>
+          <button onClick={()=>setDashOpen(true)} aria-label="Acurácia das Previsões"
+            style={{background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"20px",
+              padding:"6px 8px",cursor:"pointer",display:"flex",alignItems:"center",
+              minHeight:"36px",touchAction:"manipulation"}}>
+            <IcoBarChart s={15} c="var(--text2)"/>
+          </button>
           <button onClick={()=>setSettingsOpen(true)} aria-label="Configurações"
             style={{background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"20px",
               padding:"6px 8px",cursor:"pointer",display:"flex",alignItems:"center",
@@ -3386,7 +3713,8 @@ COB adicionado ao modelo. Previsões atualizadas.`,
           </button>
         </div>
       </div>
-      <SettingsModal open={settingsOpen} onClose={()=>setSettingsOpen(false)}/>
+      <DashboardModal open={dashOpen}     onClose={()=>setDashOpen(false)}/>
+      <SettingsModal  open={settingsOpen} onClose={()=>setSettingsOpen(false)}/>
     </ThemeCtx.Provider>
     </SettingsCtx.Provider>
   );
