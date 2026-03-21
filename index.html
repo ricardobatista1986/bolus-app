@@ -2432,28 +2432,17 @@ function DashboardModal({open, onClose}) {
         const abR  = vals.filter(v=>v>180).length;
         const blR  = vals.filter(v=>v<70).length;
 
-        // ── Episódios: séries contíguas, com gap máx 20min entre leituras
-        let lowEps=0, highEps=0, inLow=false, inHigh=false;
-        for(let i=0;i<sorted.length;i++){
-          const v = sorted[i].value;
-          // Detecta gap grande → reset de episódio
-          if(i>0){
-            const gapMin = (new Date(sorted[i].captured_at)-new Date(sorted[i-1].captured_at))/60000;
-            if(gapMin > 20){ inLow=false; inHigh=false; }
-          }
-          if(v < 70){
-            if(!inLow){ lowEps++; inLow=true; } inHigh=false;
-          } else if(v > 180){
-            if(!inHigh){ highEps++; inHigh=true; } inLow=false;
-          } else {
-            inLow=false; inHigh=false;
-          }
-        }
+        // ── AGP metrics (padrão ambulatorial)
+        const tbr54 = vals.filter(v=>v<54).length;   // hipo nível 2 — severa
+        const tar250= vals.filter(v=>v>250).length;  // hiper nível 2 — severa
+        const titrN = vals.filter(v=>v>=70&&v<=140).length; // faixa rígida
 
         const s = {
           n, avg:+avg.toFixed(1), sd:+sd.toFixed(1), cv:+cv.toFixed(1), a1c:+a1c.toFixed(2),
           tir:+(inR/n*100).toFixed(1), tar:+(abR/n*100).toFixed(1), tbr:+(blR/n*100).toFixed(1),
-          lowEps, highEps,
+          tbr54:+(tbr54/n*100).toFixed(1),
+          tar250:+(tar250/n*100).toFixed(1),
+          titr:+(titrN/n*100).toFixed(1),
         };
         glCache.current[period] = s;
         setGlStats(s);
@@ -2594,47 +2583,54 @@ function DashboardModal({open, onClose}) {
 
             {glStats && glStats.n > 0 && (
               <>
-                {/* Donut + legenda — layout horizontal igual Sweet Dreams */}
+                {/* Donut + legenda — donut centralizado, legenda em linha abaixo */}
                 <div style={{background:'var(--surface2)',borderRadius:14,padding:'16px',marginBottom:14}}>
                   <div style={{fontSize:'12px',fontWeight:700,color:'var(--text2)',textTransform:'uppercase',letterSpacing:'.4px',marginBottom:12}}>
                     Tempo na Faixa
                   </div>
-                  <div style={{display:'flex',alignItems:'center',gap:20,justifyContent:'center'}}>
+                  {/* donut centralizado */}
+                  <div style={{display:'flex',justifyContent:'center',marginBottom:16}}>
                     <TirDonut tir={glStats.tir} tar={glStats.tar} tbr={glStats.tbr}/>
-                    <div style={{display:'flex',flexDirection:'column',gap:10}}>
-                      {[
-                        {col:'#22c55e',label:'Na faixa',   pct:glStats.tir},
-                        {col:'#f97316',label:'Acima (>180)', pct:glStats.tar},
-                        {col:'#ef4444',label:'Abaixo (<70)', pct:glStats.tbr},
-                      ].map(({col,label,pct})=>(
-                        <div key={label} style={{display:'flex',alignItems:'center',gap:10}}>
-                          <div style={{width:11,height:11,borderRadius:'50%',background:col,flexShrink:0}}/>
-                          <span style={{fontSize:'13px',color:'var(--text2)',minWidth:110}}>{label}</span>
-                          <span style={{fontSize:'15px',fontWeight:800,color:'var(--text)'}}>{pct}%</span>
+                  </div>
+                  {/* legenda em 3 colunas abaixo do donut */}
+                  <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:6,textAlign:'center'}}>
+                    {[
+                      {col:'#22c55e',label:'Na faixa',    pct:glStats.tir},
+                      {col:'#f97316',label:'Acima >180',  pct:glStats.tar},
+                      {col:'#ef4444',label:'Abaixo <70',  pct:glStats.tbr},
+                    ].map(({col,label,pct})=>(
+                      <div key={label}>
+                        <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:5,marginBottom:3}}>
+                          <div style={{width:9,height:9,borderRadius:'50%',background:col,flexShrink:0}}/>
+                          <span style={{fontSize:'11px',color:'var(--text2)'}}>{label}</span>
                         </div>
-                      ))}
-                    </div>
+                        <span style={{fontSize:'16px',fontWeight:800,color:'var(--text)'}}>{pct}%</span>
+                      </div>
+                    ))}
                   </div>
                 </div>
 
-                {/* Grid de métricas 2×2 */}
+                {/* Grid de métricas 2×2 — padrão AGP */}
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:10}}>
                   <StatCard label="Glicemia Média" value={glStats.avg} unit="mg/dL"
                     col={glStats.avg>180?'#f59e0b':glStats.avg<70?'#ef4444':'var(--text)'}/>
                   <StatCard label="HbA1c estimada" value={glStats.a1c} unit="%"
                     sub="GMI: 3.31 + 0.02392×avg"
                     col={glStats.a1c>=8?'#ef4444':glStats.a1c>=7?'#f59e0b':'var(--green)'}/>
-                  <StatCard label="Baixos (<70)" value={glStats.lowEps} unit="episódios"
-                    sub="séries contíguas"
-                    col={glStats.lowEps>8?'#ef4444':glStats.lowEps>3?'#f59e0b':'var(--text)'}/>
-                  <StatCard label="Altos (>180)" value={glStats.highEps} unit="episódios"
-                    sub="séries contíguas"
-                    col={glStats.highEps>20?'#f59e0b':'var(--text)'}/>
+                  <StatCard label="Hipo severa <54" value={glStats.tbr54} unit="%"
+                    sub="meta: <1%"
+                    col={glStats.tbr54>=1?'#ef4444':glStats.tbr54>=0.5?'#f59e0b':'var(--green)'}/>
+                  <StatCard label="Hiper severa >250" value={glStats.tar250} unit="%"
+                    sub="meta: <5%"
+                    col={glStats.tar250>=5?'#ef4444':glStats.tar250>=2?'#f59e0b':'var(--green)'}/>
                   <StatCard label="Desvio Padrão" value={glStats.sd} unit="mg/dL"
                     col={glStats.sd>50?'#ef4444':glStats.sd>36?'#f59e0b':'var(--green)'}/>
                   <StatCard label="Coef. Variação" value={glStats.cv} unit="%"
                     sub="meta: <36%"
                     col={glStats.cv>=36?'#ef4444':glStats.cv>=33?'#f59e0b':'var(--green)'}/>
+                  <StatCard label="Faixa rígida" value={glStats.titr} unit="%"
+                    sub="70–140 mg/dL · meta: >50%"
+                    col={glStats.titr<35?'#ef4444':glStats.titr<50?'#f59e0b':'var(--green)'}/>
                 </div>
 
                 <div style={{fontSize:'11px',color:'var(--text3)',lineHeight:1.7}}>
