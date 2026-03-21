@@ -2356,10 +2356,12 @@ function DashboardModal({open, onClose}) {
   const [glStats,  setGlStats]  = React.useState(null);
   const [glLoad,   setGlLoad]   = React.useState(false);
   const [glErr,    setGlErr]    = React.useState(null);
+  // Cache por período para não refetch ao trocar de aba
+  const glCache = React.useRef({});
 
   const headers = { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` };
 
-  // ── Fetch previsões (carrega uma vez ao abrir)
+  // ── Fetch previsões (uma vez ao abrir)
   React.useEffect(()=>{
     if(!open || predData) return;
     setPredLoad(true); setPredErr(null);
@@ -2399,46 +2401,75 @@ function DashboardModal({open, onClose}) {
     })();
   },[open]);
 
-  // ── Fetch estatísticas de glicemia (recarrega ao mudar período)
+  // ── Fetch estatísticas de glicemia (recarrega ao mudar período, com cache)
   React.useEffect(()=>{
     if(!open || tab!=='stats') return;
+    // Usa cache se já buscou este período
+    if(glCache.current[period]){ setGlStats(glCache.current[period]); return; }
     setGlLoad(true); setGlErr(null); setGlStats(null);
     (async()=>{
       try {
         const since = new Date(Date.now() - period*24*3600000).toISOString();
+        // Busca value + captured_at para calcular episódios
         const res = await fetch(
-          `${SUPABASE_URL}/rest/v1/glucose_readings?select=value&captured_at=gte.${since}&limit=5000`,
+          `${SUPABASE_URL}/rest/v1/glucose_readings?select=value,captured_at&captured_at=gte.${since}&order=captured_at.asc&limit=8000`,
           { headers }
         );
         if(!res.ok) throw new Error('Supabase indisponível');
         const rows = await res.json();
-        const vals = rows.map(r=>r.value).filter(v=>v>=40&&v<=400);
-        if(!vals.length){ setGlStats({n:0}); return; }
+        const sorted = rows
+          .filter(r=>r.value>=40&&r.value<=400)
+          .sort((a,b)=>new Date(a.captured_at)-new Date(b.captured_at));
+        if(!sorted.length){ const s={n:0}; glCache.current[period]=s; setGlStats(s); return; }
+
+        const vals = sorted.map(r=>r.value);
         const n    = vals.length;
         const avg  = vals.reduce((s,v)=>s+v,0)/n;
         const sd   = Math.sqrt(vals.reduce((s,v)=>s+(v-avg)**2,0)/n);
         const cv   = (sd/avg)*100;
-        const a1c  = 3.31 + 0.02392*avg;
+        const a1c  = 3.31 + 0.02392*avg; // GMI fórmula
         const inR  = vals.filter(v=>v>=70&&v<=180).length;
         const abR  = vals.filter(v=>v>180).length;
         const blR  = vals.filter(v=>v<70).length;
-        const vHigh= vals.filter(v=>v>250).length; // muito alto
-        setGlStats({
+
+        // ── Episódios: séries contíguas, com gap máx 20min entre leituras
+        let lowEps=0, highEps=0, inLow=false, inHigh=false;
+        for(let i=0;i<sorted.length;i++){
+          const v = sorted[i].value;
+          // Detecta gap grande → reset de episódio
+          if(i>0){
+            const gapMin = (new Date(sorted[i].captured_at)-new Date(sorted[i-1].captured_at))/60000;
+            if(gapMin > 20){ inLow=false; inHigh=false; }
+          }
+          if(v < 70){
+            if(!inLow){ lowEps++; inLow=true; } inHigh=false;
+          } else if(v > 180){
+            if(!inHigh){ highEps++; inHigh=true; } inLow=false;
+          } else {
+            inLow=false; inHigh=false;
+          }
+        }
+
+        const s = {
           n, avg:+avg.toFixed(1), sd:+sd.toFixed(1), cv:+cv.toFixed(1), a1c:+a1c.toFixed(2),
           tir:+(inR/n*100).toFixed(1), tar:+(abR/n*100).toFixed(1), tbr:+(blR/n*100).toFixed(1),
-          lows:blR, highs:abR, vhigh:vHigh,
-          tirN:inR, tarN:abR, tbrN:blR,
-        });
+          lowEps, highEps,
+        };
+        glCache.current[period] = s;
+        setGlStats(s);
       } catch(e){ setGlErr(e.message); }
       finally{ setGlLoad(false); }
     })();
   },[open, tab, period]);
 
+  // Reset cache ao fechar para sempre buscar dados frescos no próximo open
+  React.useEffect(()=>{ if(!open) glCache.current={}; },[open]);
+
   if(!open) return null;
   const ov = {position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:200,display:'flex',alignItems:'flex-end',justifyContent:'center'};
   const sh = {background:'var(--surface)',borderRadius:'20px 20px 0 0',width:'100%',maxWidth:480,maxHeight:'90vh',overflowY:'auto',padding:'20px 18px 36px'};
 
-  // ── Componentes visuais reutilizáveis
+  // ── Componentes visuais
   const BiasTag = ({v}) => {
     if(v==null) return null;
     const col = Math.abs(v)<=5?'var(--green)':Math.abs(v)<=15?'var(--amber)':'#ef4444';
@@ -2463,33 +2494,37 @@ function DashboardModal({open, onClose}) {
     return <span style={{fontSize:'12px',fontWeight:700,color:col}}>{v}%</span>;
   };
 
-  // ── Donut SVG (TIR)
+  // ── Donut SVG — math correta com transform rotate(-90)
   const TirDonut = ({tir,tar,tbr}) => {
-    const R=54, cx=70, cy=70, stroke=14;
+    const R=56, cx=72, cy=72, sw=15;
     const circ = 2*Math.PI*R;
-    const pTir=tir/100, pTar=tar/100, pTbr=tbr/100;
-    const gap=0.008;
-    // ordem: TIR verde, TAR laranja, TBR vermelho
-    const segs=[
-      {pct:pTir, col:'#22c55e'}, {pct:pTar, col:'#f97316'}, {pct:pTbr, col:'#ef4444'},
+    const gap  = 0.007; // pequeno gap entre segmentos
+    const segs = [
+      {pct:tir/100, col:'#22c55e'},
+      {pct:tar/100, col:'#f97316'},
+      {pct:tbr/100, col:'#ef4444'},
     ];
-    let offset=0.25; // começa no topo
+    let cum = 0; // acumula offset
     return (
-      <svg width={140} height={140} style={{overflow:'visible'}}>
-        <circle cx={cx} cy={cy} r={R} fill="none" stroke="var(--surface2)" strokeWidth={stroke}/>
+      <svg width={144} height={144}>
+        {/* trilha de fundo */}
+        <circle cx={cx} cy={cy} r={R} fill="none" stroke="var(--surface2)" strokeWidth={sw}/>
         {segs.map((s,i)=>{
-          const dash = Math.max(0,(s.pct-gap))*circ;
-          const space = circ-dash;
-          const rot = offset*360-90;
-          offset+=s.pct;
-          return <circle key={i} cx={cx} cy={cy} r={R} fill="none"
-            stroke={s.col} strokeWidth={stroke}
-            strokeDasharray={`${dash} ${space}`}
-            strokeDashoffset={-rot/360*circ+circ*0.25}
-            style={{transition:'stroke-dasharray .6s'}}/>;
+          const startAt = cum;
+          cum += s.pct;
+          const dashLen = Math.max(0,(s.pct - gap)) * circ;
+          // rotate(-90) move ponto inicial para 12h; offset acumulado desloca para posição correta
+          return (
+            <circle key={i} cx={cx} cy={cy} r={R} fill="none"
+              stroke={s.col} strokeWidth={sw}
+              strokeDasharray={`${dashLen} ${circ - dashLen}`}
+              strokeDashoffset={-startAt * circ}
+              transform={`rotate(-90 ${cx} ${cy})`}
+              style={{transition:'stroke-dasharray .5s'}}/>
+          );
         })}
-        <text x={cx} y={cy-8} textAnchor="middle" fill="var(--text)" fontSize="20" fontWeight="800" fontFamily="var(--font)">{tir}%</text>
-        <text x={cx} y={cy+10} textAnchor="middle" fill="var(--text2)" fontSize="11" fontFamily="var(--font)">Na faixa</text>
+        <text x={cx} y={cy-7}  textAnchor="middle" fill="var(--text)"  fontSize="22" fontWeight="800" fontFamily="var(--font)">{tir}%</text>
+        <text x={cx} y={cx+11} textAnchor="middle" fill="var(--text2)" fontSize="11" fontFamily="var(--font)">Na faixa</text>
       </svg>
     );
   };
@@ -2512,7 +2547,7 @@ function DashboardModal({open, onClose}) {
     <div style={ov} onClick={onClose}>
       <div style={sh} onClick={e=>e.stopPropagation()}>
 
-        {/* ── Header fixo */}
+        {/* ── Header */}
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
           <div style={{display:'flex',alignItems:'center',gap:8}}>
             <IcoBarChart s={17} c="var(--accent)"/>
@@ -2521,7 +2556,7 @@ function DashboardModal({open, onClose}) {
           <button onClick={onClose} style={{background:'none',border:'none',cursor:'pointer',padding:4}}><IcoX s={18} c="var(--text2)"/></button>
         </div>
 
-        {/* ── Tab switcher */}
+        {/* ── Tabs */}
         <div style={{display:'flex',background:'var(--surface2)',borderRadius:10,padding:3,marginBottom:18,gap:3}}>
           {[{k:'stats',l:'Glicemia'},{k:'pred',l:'Previsões'}].map(({k,l})=>(
             <button key={k} onClick={()=>setTab(k)}
@@ -2535,16 +2570,16 @@ function DashboardModal({open, onClose}) {
           ))}
         </div>
 
-        {/* ══════════════════════════════════════════
+        {/* ══════════════════════════════
             ABA GLICEMIA
-        ══════════════════════════════════════════ */}
+        ══════════════════════════════ */}
         {tab==='stats' && (
           <>
             {/* Seletor de período */}
             <div style={{display:'flex',gap:6,marginBottom:18,justifyContent:'center'}}>
-              {[{d:7,l:'7 dias'},{d:14,l:'14 dias'},{d:30,l:'30 dias'}].map(({d,l})=>(
+              {[{d:7,l:'7 dias'},{d:14,l:'14 dias'},{d:30,l:'30 dias'},{d:90,l:'90 dias'}].map(({d,l})=>(
                 <button key={d} onClick={()=>setPeriod(d)}
-                  style={{padding:'5px 14px',borderRadius:20,border:'1px solid',cursor:'pointer',
+                  style={{padding:'5px 12px',borderRadius:20,border:'1px solid',cursor:'pointer',
                     fontSize:'12px',fontWeight:600,fontFamily:'var(--font)',
                     background:period===d?'var(--accent)':'var(--surface2)',
                     color:period===d?'white':'var(--text2)',
@@ -2559,43 +2594,50 @@ function DashboardModal({open, onClose}) {
 
             {glStats && glStats.n > 0 && (
               <>
-                {/* Donut + legenda */}
-                <div style={{display:'flex',alignItems:'center',gap:16,marginBottom:20,justifyContent:'center'}}>
-                  <TirDonut tir={glStats.tir} tar={glStats.tar} tbr={glStats.tbr}/>
-                  <div style={{display:'flex',flexDirection:'column',gap:8}}>
-                    {[
-                      {col:'#22c55e',label:'Na faixa',pct:glStats.tir},
-                      {col:'#f97316',label:'Acima',   pct:glStats.tar},
-                      {col:'#ef4444',label:'Abaixo',  pct:glStats.tbr},
-                    ].map(({col,label,pct})=>(
-                      <div key={label} style={{display:'flex',alignItems:'center',gap:8}}>
-                        <div style={{width:10,height:10,borderRadius:'50%',background:col,flexShrink:0}}/>
-                        <span style={{fontSize:'13px',color:'var(--text2)',minWidth:64}}>{label}</span>
-                        <span style={{fontSize:'14px',fontWeight:700,color:'var(--text)'}}>{pct}%</span>
-                      </div>
-                    ))}
+                {/* Donut + legenda — layout horizontal igual Sweet Dreams */}
+                <div style={{background:'var(--surface2)',borderRadius:14,padding:'16px',marginBottom:14}}>
+                  <div style={{fontSize:'12px',fontWeight:700,color:'var(--text2)',textTransform:'uppercase',letterSpacing:'.4px',marginBottom:12}}>
+                    Tempo na Faixa
+                  </div>
+                  <div style={{display:'flex',alignItems:'center',gap:20,justifyContent:'center'}}>
+                    <TirDonut tir={glStats.tir} tar={glStats.tar} tbr={glStats.tbr}/>
+                    <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                      {[
+                        {col:'#22c55e',label:'Na faixa',   pct:glStats.tir},
+                        {col:'#f97316',label:'Acima (>180)', pct:glStats.tar},
+                        {col:'#ef4444',label:'Abaixo (<70)', pct:glStats.tbr},
+                      ].map(({col,label,pct})=>(
+                        <div key={label} style={{display:'flex',alignItems:'center',gap:10}}>
+                          <div style={{width:11,height:11,borderRadius:'50%',background:col,flexShrink:0}}/>
+                          <span style={{fontSize:'13px',color:'var(--text2)',minWidth:110}}>{label}</span>
+                          <span style={{fontSize:'15px',fontWeight:800,color:'var(--text)'}}>{pct}%</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
 
-                {/* Grid de métricas */}
+                {/* Grid de métricas 2×2 */}
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:10}}>
                   <StatCard label="Glicemia Média" value={glStats.avg} unit="mg/dL"
                     col={glStats.avg>180?'#f59e0b':glStats.avg<70?'#ef4444':'var(--text)'}/>
                   <StatCard label="HbA1c estimada" value={glStats.a1c} unit="%"
-                    sub="GMI: 3.31 + 0.02392 × avg"
+                    sub="GMI: 3.31 + 0.02392×avg"
                     col={glStats.a1c>=8?'#ef4444':glStats.a1c>=7?'#f59e0b':'var(--green)'}/>
-                  <StatCard label="Lows (<70)" value={glStats.lows} unit="eventos"
-                    col={glStats.lows>10?'#ef4444':glStats.lows>4?'#f59e0b':'var(--text)'}/>
-                  <StatCard label="Highs (>180)" value={glStats.highs} unit="eventos"
-                    col={glStats.highs>50?'#f59e0b':'var(--text)'}/>
+                  <StatCard label="Baixos (<70)" value={glStats.lowEps} unit="episódios"
+                    sub="séries contíguas"
+                    col={glStats.lowEps>8?'#ef4444':glStats.lowEps>3?'#f59e0b':'var(--text)'}/>
+                  <StatCard label="Altos (>180)" value={glStats.highEps} unit="episódios"
+                    sub="séries contíguas"
+                    col={glStats.highEps>20?'#f59e0b':'var(--text)'}/>
                   <StatCard label="Desvio Padrão" value={glStats.sd} unit="mg/dL"
                     col={glStats.sd>50?'#ef4444':glStats.sd>36?'#f59e0b':'var(--green)'}/>
                   <StatCard label="Coef. Variação" value={glStats.cv} unit="%"
-                    sub="<36% = estável"
+                    sub="meta: <36%"
                     col={glStats.cv>=36?'#ef4444':glStats.cv>=33?'#f59e0b':'var(--green)'}/>
                 </div>
 
-                <div style={{fontSize:'11px',color:'var(--text3)',marginTop:8,lineHeight:1.7}}>
+                <div style={{fontSize:'11px',color:'var(--text3)',lineHeight:1.7}}>
                   {glStats.n.toLocaleString()} leituras · Meta TIR ≥70% · CV &lt;36% · HbA1c &lt;7%
                 </div>
               </>
@@ -2606,9 +2648,9 @@ function DashboardModal({open, onClose}) {
           </>
         )}
 
-        {/* ══════════════════════════════════════════
+        {/* ══════════════════════════════
             ABA PREVISÕES
-        ══════════════════════════════════════════ */}
+        ══════════════════════════════ */}
         {tab==='pred' && (
           <>
             {predLoad && <div style={{textAlign:'center',padding:'40px 0',color:'var(--text2)'}}>Carregando…</div>}
