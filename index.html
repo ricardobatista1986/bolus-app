@@ -2729,6 +2729,79 @@ function SettingsModal({open, onClose}) {
   const [newRange, setNewRange] = useState({start:"06:00",end:"18:00",icr:"5"});
   const [addErr, setAddErr] = useState("");
 
+  // ── Análise ICR baseada em dados reais
+  const [icrAnalysis, setIcrAnalysis] = useState(null);
+  const [icrAnalysisLoad, setIcrAnalysisLoad] = useState(false);
+
+  const runIcrAnalysis = async () => {
+    setIcrAnalysisLoad(true);
+    try {
+      const isf  = parseFloat(draft.isf) || 30;
+      const tgt  = parseFloat(draft.corrTarget) || 110;
+      // Busca últimos 30 dias de refeições com dose
+      const since = new Date(Date.now() - 30*24*3600000).toISOString();
+      const [mealsRes, glucRes] = await Promise.all([
+        fetch(`${SUPABASE_URL}/rest/v1/meal_records?select=id,recorded_at,carbs,applied_dose,glucose_before,meal_type&applied_dose=gt.0&carbs=gt.0&recorded_at=gte.${since}&limit=300`,
+          { headers:{ apikey:SUPABASE_KEY, Authorization:`Bearer ${SUPABASE_KEY}` } }),
+        fetch(`${SUPABASE_URL}/rest/v1/glucose_readings?select=value,captured_at&captured_at=gte.${since}&order=captured_at.asc&limit=8000`,
+          { headers:{ apikey:SUPABASE_KEY, Authorization:`Bearer ${SUPABASE_KEY}` } }),
+      ]);
+      const meals = await mealsRes.json();
+      const gluc  = await glucRes.json();
+
+      // Para cada refeição, encontra leitura 90-150min após
+      const enriched = meals
+        .filter(m => m.glucose_before >= 70 && m.glucose_before <= 200)
+        .map(m => {
+          const mTs = new Date(m.recorded_at).getTime();
+          const win = gluc.filter(g => {
+            const gTs = new Date(g.captured_at).getTime();
+            return gTs >= mTs + 90*60000 && gTs <= mTs + 150*60000;
+          });
+          if(!win.length) return null;
+          const g2h = win.reduce((best, g) =>
+            Math.abs(new Date(g.captured_at).getTime() - (mTs+120*60000)) <
+            Math.abs(new Date(best.captured_at).getTime() - (mTs+120*60000)) ? g : best
+          ).value;
+          const corr = Math.max(0, (m.glucose_before - tgt) / isf);
+          const dosePrandial = Math.max(0, m.applied_dose - corr);
+          if(dosePrandial < 1.0) return null; // dose quase só correção
+          const icrEf = m.carbs / dosePrandial;
+          const hora  = new Date(new Date(m.recorded_at).getTime() + (-3)*3600000).getUTCHours();
+          return { hora, carbs:m.carbs, dose:m.applied_dose, dosePrandial, icrEf, g2h, gBefore:m.glucose_before };
+        })
+        .filter(Boolean);
+
+      // Agrupa pelas faixas de ICR configuradas no draft
+      const ranges = draft.icrRanges.map(r => {
+        const [sh,sm] = r.start.split(':').map(Number);
+        const [eh,em] = r.end.split(':').map(Number);
+        const startMin = sh*60+sm, endMin = eh*60+em;
+        const inRange = h => {
+          const hm = h*60;
+          return startMin <= endMin ? hm>=startMin && hm<endMin : hm>=startMin || hm<endMin;
+        };
+        const items = enriched.filter(e => inRange(e.hora));
+        if(!items.length) return { ...r, n:0 };
+        const nAlto  = items.filter(e=>e.g2h>180).length;
+        const nBom   = items.filter(e=>e.g2h>=100&&e.g2h<=160).length;
+        const nBaixo = items.filter(e=>e.g2h<100).length;
+        const icrMed = items.reduce((s,e)=>s+e.icrEf,0)/items.length;
+        const g2hMed = Math.round(items.reduce((s,e)=>s+e.g2h,0)/items.length);
+        // Sugestão: se >55% alto → reduzir ICR 10%; se >55% baixo → aumentar 10%
+        let sugestao = null;
+        const pAlto  = nAlto/items.length;
+        const pBaixo = nBaixo/items.length;
+        const icrAtual = parseInt(r.icr);
+        if(pAlto > 0.55)       sugestao = Math.max(1, +(icrMed*0.9).toFixed(1));
+        else if(pBaixo > 0.55) sugestao = +(icrMed*1.1).toFixed(1);
+        return { ...r, n:items.length, nAlto, nBom, nBaixo, icrMed:+icrMed.toFixed(1), g2hMed, sugestao };
+      });
+      setIcrAnalysis(ranges);
+    } catch(e) { setIcrAnalysis([]); }
+    finally { setIcrAnalysisLoad(false); }
+  };
+
   useEffect(()=>{
     if(open){ setDraft(toStr(settings)); setAdding(false); setAddErr(""); setNewRange({start:"06:00",end:"18:00",icr:"5"}); }
   },[open]);
@@ -2911,6 +2984,77 @@ function SettingsModal({open, onClose}) {
               + Adicionar faixa
             </button>
           )}
+
+          {/* ── Análise ICR baseada em dados reais */}
+          <div style={{borderTop:"1px solid var(--border)",marginTop:"8px",paddingTop:"14px"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"10px"}}>
+              <div>
+                <div style={{fontSize:"11px",fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:".06em"}}>Análise de ICR</div>
+                <div style={{fontSize:"11px",color:"var(--text3)",marginTop:"2px"}}>últimos 30 dias · glicemia 2h pós-dose</div>
+              </div>
+              <button onClick={runIcrAnalysis} disabled={icrAnalysisLoad}
+                style={{padding:"7px 14px",borderRadius:"8px",border:"1px solid var(--accent)",
+                  background:"transparent",color:"var(--accent)",fontSize:"12px",fontWeight:700,
+                  cursor:"pointer",fontFamily:"var(--font)",touchAction:"manipulation",
+                  opacity:icrAnalysisLoad?0.6:1}}>
+                {icrAnalysisLoad ? "…" : "Analisar"}
+              </button>
+            </div>
+
+            {icrAnalysis && icrAnalysis.length > 0 && icrAnalysis.map(r => r.n === 0 ? null : (
+              <div key={r.id} style={{background:"var(--surface2)",borderRadius:"10px",
+                padding:"10px 12px",marginBottom:"8px"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"6px"}}>
+                  <span style={{fontSize:"13px",fontWeight:700,color:"var(--text)"}}>
+                    {r.start}–{r.end} · ICR 1:{r.icr}
+                  </span>
+                  <span style={{fontSize:"11px",color:"var(--text3)",background:"var(--surface)",
+                    padding:"2px 7px",borderRadius:"20px"}}>{r.n} refeições</span>
+                </div>
+                {/* Barra de outcomes */}
+                <div style={{display:"flex",gap:"2px",height:"8px",borderRadius:"4px",overflow:"hidden",marginBottom:"7px"}}>
+                  {r.nAlto  > 0 && <div style={{flex:r.nAlto, background:"#f97316", transition:"flex .4s"}}/>}
+                  {r.nBom   > 0 && <div style={{flex:r.nBom,  background:"#22c55e", transition:"flex .4s"}}/>}
+                  {r.nBaixo > 0 && <div style={{flex:r.nBaixo,background:"#ef4444", transition:"flex .4s"}}/>}
+                </div>
+                <div style={{display:"flex",gap:"12px",fontSize:"11px",color:"var(--text3)",marginBottom:"6px"}}>
+                  <span>🟠 {r.nAlto} alto</span>
+                  <span>🟢 {r.nBom} ok</span>
+                  <span>🔴 {r.nBaixo} baixo</span>
+                  <span style={{marginLeft:"auto"}}>G 2h: <strong style={{color:"var(--text)"}}>{r.g2hMed}</strong></span>
+                </div>
+                {r.sugestao ? (
+                  <div style={{display:"flex",alignItems:"center",gap:"8px",
+                    background:r.nAlto>r.nBaixo?"rgba(249,115,22,.1)":"rgba(239,68,68,.1)",
+                    borderRadius:"7px",padding:"7px 10px"}}>
+                    <span style={{fontSize:"12px",color:r.nAlto>r.nBaixo?"#f97316":"#ef4444",flex:1}}>
+                      {r.nAlto>r.nBaixo
+                        ? `Glicemia pós-refeição cronicamente alta — dose possivelmente insuficiente`
+                        : `Glicemia pós-refeição baixa com frequência — dose possivelmente excessiva`}
+                    </span>
+                    <div style={{textAlign:"center",flexShrink:0}}>
+                      <div style={{fontSize:"10px",color:"var(--text3)"}}>sugestão</div>
+                      <div style={{fontSize:"15px",fontWeight:800,color:"var(--accent)"}}>1:{r.sugestao}</div>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{fontSize:"11px",color:"var(--green)",padding:"4px 0"}}>
+                    ✓ ICR calibrado para este período
+                  </div>
+                )}
+              </div>
+            ))}
+            {icrAnalysis && icrAnalysis.every(r=>r.n===0) && (
+              <div style={{fontSize:"12px",color:"var(--text3)",padding:"8px 0"}}>
+                Dados insuficientes — registre mais refeições com dose para análise.
+              </div>
+            )}
+            {!icrAnalysis && !icrAnalysisLoad && (
+              <div style={{fontSize:"11px",color:"var(--text3)",padding:"4px 0"}}>
+                Pressione "Analisar" para verificar seus dados dos últimos 30 dias.
+              </div>
+            )}
+          </div>
 
           {/* Correção */}
           <div style={{fontSize:"11px",fontWeight:700,color:"var(--text3)",textTransform:"uppercase",
