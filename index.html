@@ -2345,7 +2345,7 @@ const subscribeToPush = async () => {
 function DashboardModal({open, onClose}) {
   const {dark} = useContext(ThemeCtx);
   const [tab,     setTab]     = React.useState('stats');   // 'stats' | 'pred'
-  const [period,  setPeriod]  = React.useState(7);         // dias para aba stats
+  const [period,  setPeriod]  = React.useState(14);        // dias para aba stats
 
   // ── Estado aba Previsões
   const [predData,  setPredData]  = React.useState(null);
