@@ -2344,112 +2344,109 @@ const subscribeToPush = async () => {
 /* ── DASHBOARD MODAL (Camada 3) ───────────────────────────────────────── */
 function DashboardModal({open, onClose}) {
   const {dark} = useContext(ThemeCtx);
-  const [stats,  setStats]  = React.useState(null);
-  const [loading,setLoading] = React.useState(false);
-  const [error,  setError]   = React.useState(null);
+  const [tab,     setTab]     = React.useState('stats');   // 'stats' | 'pred'
+  const [period,  setPeriod]  = React.useState(7);         // dias para aba stats
 
+  // ── Estado aba Previsões
+  const [predData,  setPredData]  = React.useState(null);
+  const [predLoad,  setPredLoad]  = React.useState(false);
+  const [predErr,   setPredErr]   = React.useState(null);
+
+  // ── Estado aba Estatísticas
+  const [glStats,  setGlStats]  = React.useState(null);
+  const [glLoad,   setGlLoad]   = React.useState(false);
+  const [glErr,    setGlErr]    = React.useState(null);
+
+  const headers = { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` };
+
+  // ── Fetch previsões (carrega uma vez ao abrir)
   React.useEffect(()=>{
-    if(!open) return;
-    setLoading(true); setError(null);
-    const fetchStats = async () => {
+    if(!open || predData) return;
+    setPredLoad(true); setPredErr(null);
+    (async()=>{
       try {
-        // Query 1: totais e MAE/viés por horizonte
-        const q1 = `
-          SELECT
-            COUNT(*) as total,
-            ROUND(AVG(ABS(t30_err))::numeric,1) as t30_mae,
-            ROUND(AVG(ABS(t60_err))::numeric,1) as t60_mae,
-            ROUND(AVG(ABS(t90_err))::numeric,1) as t90_mae,
-            ROUND(AVG(t30_err)::numeric,1)      as t30_bias,
-            ROUND(AVG(t60_err)::numeric,1)      as t60_bias,
-            ROUND(AVG(t90_err)::numeric,1)      as t90_bias,
-            ROUND(100.0*SUM(CASE WHEN ABS(t30_err)<=20 THEN 1 ELSE 0 END)/NULLIF(COUNT(t30_err),0)::numeric,0) as t30_p20,
-            ROUND(100.0*SUM(CASE WHEN ABS(t60_err)<=20 THEN 1 ELSE 0 END)/NULLIF(COUNT(t60_err),0)::numeric,0) as t60_p20,
-            ROUND(100.0*SUM(CASE WHEN ABS(t90_err)<=20 THEN 1 ELSE 0 END)/NULLIF(COUNT(t90_err),0)::numeric,0) as t90_p20
-          FROM prediction_validations
-          WHERE t30_actual IS NOT NULL`;
-
-        // Query 2: split por zona glicêmica
-        const q2 = `
-          SELECT
-            CASE
-              WHEN base_glucose >= 180 THEN 'hiper'
-              WHEN base_glucose <  70  THEN 'hipo'
-              ELSE 'alvo'
-            END as zona,
-            COUNT(*) as n,
-            ROUND(AVG(t30_err)::numeric,1) as t30_bias,
-            ROUND(AVG(t60_err)::numeric,1) as t60_bias,
-            ROUND(AVG(t90_err)::numeric,1) as t90_bias,
-            ROUND(AVG(ABS(t60_err))::numeric,1) as t60_mae
-          FROM prediction_validations
-          WHERE t30_actual IS NOT NULL
-          GROUP BY 1 ORDER BY 1`;
-
-        const headers = { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` };
-        const enc = s => encodeURIComponent(s.replace(/\s+/g,' ').trim());
-        const [r1,r2] = await Promise.all([
-          fetch(`${SUPABASE_URL}/rest/v1/rpc/query`, {
-            method: 'POST', headers: {...headers,'Content-Type':'application/json'},
-            body: JSON.stringify({query: q1})
-          }),
-          fetch(`${SUPABASE_URL}/rest/v1/rpc/query`, {
-            method: 'POST', headers: {...headers,'Content-Type':'application/json'},
-            body: JSON.stringify({query: q2})
-          }),
-        ]);
-        // Fallback: usa fetch direto com SQL via postgrest
-        const res1 = await fetch(
+        const res = await fetch(
           `${SUPABASE_URL}/rest/v1/prediction_validations?select=t30_err,t60_err,t90_err,base_glucose&t30_actual=not.is.null&limit=2000`,
           { headers }
         );
-        if(!res1.ok) throw new Error('Supabase indisponível');
-        const rows = await res1.json();
-        if(!rows.length) { setStats({total:0}); setLoading(false); return; }
-
-        // Calcula localmente
+        if(!res.ok) throw new Error('Supabase indisponível');
+        const rows = await res.json();
+        if(!rows.length){ setPredData({total:0}); return; }
         const calc = (arr, field) => {
           const v = arr.map(r=>r[field]).filter(x=>x!=null);
           if(!v.length) return null;
-          const mae   = +(v.reduce((s,x)=>s+Math.abs(x),0)/v.length).toFixed(1);
-          const bias  = +(v.reduce((s,x)=>s+x,0)/v.length).toFixed(1);
-          const p20   = Math.round(100*v.filter(x=>Math.abs(x)<=20).length/v.length);
-          return {mae, bias, p20, n: v.length};
+          const mae  = +(v.reduce((s,x)=>s+Math.abs(x),0)/v.length).toFixed(1);
+          const bias = +(v.reduce((s,x)=>s+x,0)/v.length).toFixed(1);
+          const p20  = Math.round(100*v.filter(x=>Math.abs(x)<=20).length/v.length);
+          return {mae,bias,p20,n:v.length};
         };
-        const zona = g => g>=180?'hiper':g<70?'hipo':'alvo';
         const byZone = {};
         for(const r of rows){
-          const z = zona(r.base_glucose||100);
-          if(!byZone[z]) byZone[z]={rows:[]};
-          byZone[z].rows.push(r);
+          const z = r.base_glucose>=180?'hiper':r.base_glucose<70?'hipo':'alvo';
+          if(!byZone[z]) byZone[z]=[];
+          byZone[z].push(r);
         }
-        const zoneStats = Object.entries(byZone).map(([z,{rows:zr}])=>({
-          zona: z, n: zr.length,
-          t30: calc(zr,'t30_err'), t60: calc(zr,'t60_err'), t90: calc(zr,'t90_err'),
-        }));
-        setStats({
+        setPredData({
           total: rows.length,
           t30: calc(rows,'t30_err'), t60: calc(rows,'t60_err'), t90: calc(rows,'t90_err'),
-          zones: zoneStats,
+          zones: Object.entries(byZone).map(([z,zr])=>({
+            zona:z, n:zr.length,
+            t30:calc(zr,'t30_err'), t60:calc(zr,'t60_err'), t90:calc(zr,'t90_err'),
+          })),
         });
-      } catch(e) { setError(e.message); }
-      finally { setLoading(false); }
-    };
-    fetchStats();
+      } catch(e){ setPredErr(e.message); }
+      finally{ setPredLoad(false); }
+    })();
   },[open]);
+
+  // ── Fetch estatísticas de glicemia (recarrega ao mudar período)
+  React.useEffect(()=>{
+    if(!open || tab!=='stats') return;
+    setGlLoad(true); setGlErr(null); setGlStats(null);
+    (async()=>{
+      try {
+        const since = new Date(Date.now() - period*24*3600000).toISOString();
+        const res = await fetch(
+          `${SUPABASE_URL}/rest/v1/glucose_readings?select=value&captured_at=gte.${since}&limit=5000`,
+          { headers }
+        );
+        if(!res.ok) throw new Error('Supabase indisponível');
+        const rows = await res.json();
+        const vals = rows.map(r=>r.value).filter(v=>v>=40&&v<=400);
+        if(!vals.length){ setGlStats({n:0}); return; }
+        const n    = vals.length;
+        const avg  = vals.reduce((s,v)=>s+v,0)/n;
+        const sd   = Math.sqrt(vals.reduce((s,v)=>s+(v-avg)**2,0)/n);
+        const cv   = (sd/avg)*100;
+        const a1c  = 3.31 + 0.02392*avg;
+        const inR  = vals.filter(v=>v>=70&&v<=180).length;
+        const abR  = vals.filter(v=>v>180).length;
+        const blR  = vals.filter(v=>v<70).length;
+        const vHigh= vals.filter(v=>v>250).length; // muito alto
+        setGlStats({
+          n, avg:+avg.toFixed(1), sd:+sd.toFixed(1), cv:+cv.toFixed(1), a1c:+a1c.toFixed(2),
+          tir:+(inR/n*100).toFixed(1), tar:+(abR/n*100).toFixed(1), tbr:+(blR/n*100).toFixed(1),
+          lows:blR, highs:abR, vhigh:vHigh,
+          tirN:inR, tarN:abR, tbrN:blR,
+        });
+      } catch(e){ setGlErr(e.message); }
+      finally{ setGlLoad(false); }
+    })();
+  },[open, tab, period]);
 
   if(!open) return null;
   const ov = {position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:200,display:'flex',alignItems:'flex-end',justifyContent:'center'};
-  const sh = {background:'var(--surface)',borderRadius:'20px 20px 0 0',width:'100%',maxWidth:480,maxHeight:'88vh',overflowY:'auto',padding:'20px 18px 32px'};
+  const sh = {background:'var(--surface)',borderRadius:'20px 20px 0 0',width:'100%',maxWidth:480,maxHeight:'90vh',overflowY:'auto',padding:'20px 18px 36px'};
 
+  // ── Componentes visuais reutilizáveis
   const BiasTag = ({v}) => {
     if(v==null) return null;
     const col = Math.abs(v)<=5?'var(--green)':Math.abs(v)<=15?'var(--amber)':'#ef4444';
     return <span style={{fontSize:'11px',padding:'2px 6px',borderRadius:'4px',background:`${col}20`,color:col,fontWeight:700}}>{v>0?'+':''}{v}</span>;
   };
-  const MaeBar = ({v, max=80}) => {
+  const MaeBar = ({v,max=80}) => {
     if(v==null) return null;
-    const pct = Math.min(100, v/max*100);
+    const pct = Math.min(100,v/max*100);
     const col = v<=30?'var(--green)':v<=55?'var(--amber)':'#ef4444';
     return (
       <div style={{display:'flex',alignItems:'center',gap:6}}>
@@ -2466,83 +2463,212 @@ function DashboardModal({open, onClose}) {
     return <span style={{fontSize:'12px',fontWeight:700,color:col}}>{v}%</span>;
   };
 
-  const horizons = [
-    {t:'t30', label:'+30min'}, {t:'t60', label:'+60min'}, {t:'t90', label:'+90min'}
-  ];
-  const zoneLabel = {hiper:{label:'Hiper ≥180',col:'#f59e0b'}, alvo:{label:'Alvo 70–179',col:'var(--green)'}, hipo:{label:'Hipo <70',col:'#ef4444'}};
+  // ── Donut SVG (TIR)
+  const TirDonut = ({tir,tar,tbr}) => {
+    const R=54, cx=70, cy=70, stroke=14;
+    const circ = 2*Math.PI*R;
+    const pTir=tir/100, pTar=tar/100, pTbr=tbr/100;
+    const gap=0.008;
+    // ordem: TIR verde, TAR laranja, TBR vermelho
+    const segs=[
+      {pct:pTir, col:'#22c55e'}, {pct:pTar, col:'#f97316'}, {pct:pTbr, col:'#ef4444'},
+    ];
+    let offset=0.25; // começa no topo
+    return (
+      <svg width={140} height={140} style={{overflow:'visible'}}>
+        <circle cx={cx} cy={cy} r={R} fill="none" stroke="var(--surface2)" strokeWidth={stroke}/>
+        {segs.map((s,i)=>{
+          const dash = Math.max(0,(s.pct-gap))*circ;
+          const space = circ-dash;
+          const rot = offset*360-90;
+          offset+=s.pct;
+          return <circle key={i} cx={cx} cy={cy} r={R} fill="none"
+            stroke={s.col} strokeWidth={stroke}
+            strokeDasharray={`${dash} ${space}`}
+            strokeDashoffset={-rot/360*circ+circ*0.25}
+            style={{transition:'stroke-dasharray .6s'}}/>;
+        })}
+        <text x={cx} y={cy-8} textAnchor="middle" fill="var(--text)" fontSize="20" fontWeight="800" fontFamily="var(--font)">{tir}%</text>
+        <text x={cx} y={cy+10} textAnchor="middle" fill="var(--text2)" fontSize="11" fontFamily="var(--font)">Na faixa</text>
+      </svg>
+    );
+  };
+
+  const StatCard = ({label,value,unit,sub,col}) => (
+    <div style={{background:'var(--surface2)',borderRadius:12,padding:'12px 14px'}}>
+      <div style={{fontSize:'11px',color:'var(--text3)',marginBottom:4,textTransform:'uppercase',letterSpacing:'.4px'}}>{label}</div>
+      <div style={{display:'flex',alignItems:'baseline',gap:4}}>
+        <span style={{fontSize:'24px',fontWeight:800,color:col||'var(--text)'}}>{value}</span>
+        {unit && <span style={{fontSize:'13px',color:'var(--text2)'}}>{unit}</span>}
+      </div>
+      {sub && <div style={{fontSize:'11px',color:'var(--text3)',marginTop:2}}>{sub}</div>}
+    </div>
+  );
+
+  const zoneLabel = {hiper:{label:'Hiper ≥180',col:'#f59e0b'},alvo:{label:'Alvo 70–179',col:'var(--green)'},hipo:{label:'Hipo <70',col:'#ef4444'}};
+  const horizons  = [{t:'t30',label:'+30min'},{t:'t60',label:'+60min'},{t:'t90',label:'+90min'}];
 
   return (
     <div style={ov} onClick={onClose}>
       <div style={sh} onClick={e=>e.stopPropagation()}>
-        {/* header */}
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:18}}>
+
+        {/* ── Header fixo */}
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
           <div style={{display:'flex',alignItems:'center',gap:8}}>
-            <IcoBarChart s={18} c="var(--accent)"/>
-            <span style={{fontWeight:700,fontSize:'16px',color:'var(--text)'}}>Acurácia das Previsões</span>
+            <IcoBarChart s={17} c="var(--accent)"/>
+            <span style={{fontWeight:700,fontSize:'16px',color:'var(--text)'}}>Análise</span>
           </div>
           <button onClick={onClose} style={{background:'none',border:'none',cursor:'pointer',padding:4}}><IcoX s={18} c="var(--text2)"/></button>
         </div>
 
-        {loading && <div style={{textAlign:'center',padding:'32px 0',color:'var(--text2)'}}>Carregando dados…</div>}
-        {error   && <div style={{textAlign:'center',padding:'20px 0',color:'#ef4444',fontSize:'13px'}}>{error}</div>}
+        {/* ── Tab switcher */}
+        <div style={{display:'flex',background:'var(--surface2)',borderRadius:10,padding:3,marginBottom:18,gap:3}}>
+          {[{k:'stats',l:'Glicemia'},{k:'pred',l:'Previsões'}].map(({k,l})=>(
+            <button key={k} onClick={()=>setTab(k)}
+              style={{flex:1,padding:'7px 0',borderRadius:8,border:'none',cursor:'pointer',fontWeight:600,fontSize:'13px',
+                fontFamily:'var(--font)',transition:'all .2s',
+                background:tab===k?'var(--surface)':'transparent',
+                color:tab===k?'var(--text)':'var(--text2)',
+                boxShadow:tab===k?'0 1px 4px rgba(0,0,0,.12)':'none'}}>
+              {l}
+            </button>
+          ))}
+        </div>
 
-        {stats && stats.total > 0 && (
+        {/* ══════════════════════════════════════════
+            ABA GLICEMIA
+        ══════════════════════════════════════════ */}
+        {tab==='stats' && (
           <>
-            {/* total */}
-            <div style={{textAlign:'center',marginBottom:20}}>
-              <span style={{fontSize:'28px',fontWeight:800,color:'var(--accent)'}}>{stats.total}</span>
-              <span style={{fontSize:'13px',color:'var(--text2)',marginLeft:6}}>previsões validadas</span>
+            {/* Seletor de período */}
+            <div style={{display:'flex',gap:6,marginBottom:18,justifyContent:'center'}}>
+              {[{d:7,l:'7 dias'},{d:14,l:'14 dias'},{d:30,l:'30 dias'}].map(({d,l})=>(
+                <button key={d} onClick={()=>setPeriod(d)}
+                  style={{padding:'5px 14px',borderRadius:20,border:'1px solid',cursor:'pointer',
+                    fontSize:'12px',fontWeight:600,fontFamily:'var(--font)',
+                    background:period===d?'var(--accent)':'var(--surface2)',
+                    color:period===d?'white':'var(--text2)',
+                    borderColor:period===d?'var(--accent)':'var(--border)'}}>
+                  {l}
+                </button>
+              ))}
             </div>
 
-            {/* tabela por horizonte */}
-            <div style={{background:'var(--surface2)',borderRadius:12,padding:'14px 16px',marginBottom:16}}>
-              <div style={{display:'grid',gridTemplateColumns:'72px 1fr 60px 52px',gap:'6px 10px',alignItems:'center'}}>
-                <span style={{fontSize:'11px',fontWeight:700,color:'var(--text3)',textTransform:'uppercase'}}>Horizonte</span>
-                <span style={{fontSize:'11px',fontWeight:700,color:'var(--text3)',textTransform:'uppercase'}}>MAE</span>
-                <span style={{fontSize:'11px',fontWeight:700,color:'var(--text3)',textTransform:'uppercase'}}>Viés</span>
-                <span style={{fontSize:'11px',fontWeight:700,color:'var(--text3)',textTransform:'uppercase'}}>±20</span>
-                {horizons.map(({t,label})=>(
-                  <React.Fragment key={t}>
-                    <span style={{fontSize:'13px',fontWeight:600,color:'var(--text)'}}>{label}</span>
-                    <MaeBar v={stats[t]?.mae}/>
-                    <BiasTag v={stats[t]?.bias}/>
-                    <P20Tag v={stats[t]?.p20}/>
-                  </React.Fragment>
-                ))}
-              </div>
-            </div>
+            {glLoad && <div style={{textAlign:'center',padding:'40px 0',color:'var(--text2)'}}>Carregando…</div>}
+            {glErr  && <div style={{textAlign:'center',padding:'20px 0',color:'#ef4444',fontSize:'13px'}}>{glErr}</div>}
 
-            {/* por zona */}
-            <div style={{fontSize:'12px',fontWeight:700,color:'var(--text2)',marginBottom:8,textTransform:'uppercase',letterSpacing:'.5px'}}>Por zona glicêmica</div>
-            <div style={{display:'flex',flexDirection:'column',gap:8}}>
-              {(stats.zones||[]).sort((a,b)=>a.zona<b.zona?-1:1).map(z=>(
-                <div key={z.zona} style={{background:'var(--surface2)',borderRadius:10,padding:'10px 14px'}}>
-                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
-                    <span style={{fontSize:'13px',fontWeight:700,color:zoneLabel[z.zona]?.col||'var(--text)'}}>
-                      {zoneLabel[z.zona]?.label||z.zona}
-                    </span>
-                    <span style={{fontSize:'11px',color:'var(--text3)',background:'var(--surface)',padding:'2px 8px',borderRadius:20}}>{z.n} amostras</span>
-                  </div>
-                  <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:6}}>
-                    {[{t:'t30',l:'+30'},{t:'t60',l:'+60'},{t:'t90',l:'+90'}].map(({t,l})=>(
-                      <div key={t} style={{textAlign:'center'}}>
-                        <div style={{fontSize:'11px',color:'var(--text3)',marginBottom:2}}>{l}</div>
-                        <BiasTag v={z[t]?.bias}/>
+            {glStats && glStats.n > 0 && (
+              <>
+                {/* Donut + legenda */}
+                <div style={{display:'flex',alignItems:'center',gap:16,marginBottom:20,justifyContent:'center'}}>
+                  <TirDonut tir={glStats.tir} tar={glStats.tar} tbr={glStats.tbr}/>
+                  <div style={{display:'flex',flexDirection:'column',gap:8}}>
+                    {[
+                      {col:'#22c55e',label:'Na faixa',pct:glStats.tir},
+                      {col:'#f97316',label:'Acima',   pct:glStats.tar},
+                      {col:'#ef4444',label:'Abaixo',  pct:glStats.tbr},
+                    ].map(({col,label,pct})=>(
+                      <div key={label} style={{display:'flex',alignItems:'center',gap:8}}>
+                        <div style={{width:10,height:10,borderRadius:'50%',background:col,flexShrink:0}}/>
+                        <span style={{fontSize:'13px',color:'var(--text2)',minWidth:64}}>{label}</span>
+                        <span style={{fontSize:'14px',fontWeight:700,color:'var(--text)'}}>{pct}%</span>
                       </div>
                     ))}
                   </div>
                 </div>
-              ))}
-            </div>
 
-            {/* legenda */}
-            <div style={{marginTop:16,fontSize:'11px',color:'var(--text3)',lineHeight:1.6}}>
-              <strong>MAE</strong> = erro médio absoluto (mg/dL) · <strong>Viés</strong> = actual − previsto · <strong>±20</strong> = % dentro de ±20 mg/dL
-            </div>
+                {/* Grid de métricas */}
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:10}}>
+                  <StatCard label="Glicemia Média" value={glStats.avg} unit="mg/dL"
+                    col={glStats.avg>180?'#f59e0b':glStats.avg<70?'#ef4444':'var(--text)'}/>
+                  <StatCard label="HbA1c estimada" value={glStats.a1c} unit="%"
+                    sub="GMI: 3.31 + 0.02392 × avg"
+                    col={glStats.a1c>=8?'#ef4444':glStats.a1c>=7?'#f59e0b':'var(--green)'}/>
+                  <StatCard label="Lows (<70)" value={glStats.lows} unit="eventos"
+                    col={glStats.lows>10?'#ef4444':glStats.lows>4?'#f59e0b':'var(--text)'}/>
+                  <StatCard label="Highs (>180)" value={glStats.highs} unit="eventos"
+                    col={glStats.highs>50?'#f59e0b':'var(--text)'}/>
+                  <StatCard label="Desvio Padrão" value={glStats.sd} unit="mg/dL"
+                    col={glStats.sd>50?'#ef4444':glStats.sd>36?'#f59e0b':'var(--green)'}/>
+                  <StatCard label="Coef. Variação" value={glStats.cv} unit="%"
+                    sub="<36% = estável"
+                    col={glStats.cv>=36?'#ef4444':glStats.cv>=33?'#f59e0b':'var(--green)'}/>
+                </div>
+
+                <div style={{fontSize:'11px',color:'var(--text3)',marginTop:8,lineHeight:1.7}}>
+                  {glStats.n.toLocaleString()} leituras · Meta TIR ≥70% · CV &lt;36% · HbA1c &lt;7%
+                </div>
+              </>
+            )}
+            {glStats && glStats.n === 0 && (
+              <div style={{textAlign:'center',padding:'32px 0',color:'var(--text2)'}}>Sem leituras no período.</div>
+            )}
           </>
         )}
-        {stats && stats.total === 0 && (
-          <div style={{textAlign:'center',padding:'32px 0',color:'var(--text2)'}}>Nenhuma previsão validada ainda.</div>
+
+        {/* ══════════════════════════════════════════
+            ABA PREVISÕES
+        ══════════════════════════════════════════ */}
+        {tab==='pred' && (
+          <>
+            {predLoad && <div style={{textAlign:'center',padding:'40px 0',color:'var(--text2)'}}>Carregando…</div>}
+            {predErr  && <div style={{textAlign:'center',padding:'20px 0',color:'#ef4444',fontSize:'13px'}}>{predErr}</div>}
+
+            {predData && predData.total > 0 && (
+              <>
+                <div style={{textAlign:'center',marginBottom:20}}>
+                  <span style={{fontSize:'28px',fontWeight:800,color:'var(--accent)'}}>{predData.total}</span>
+                  <span style={{fontSize:'13px',color:'var(--text2)',marginLeft:6}}>previsões validadas</span>
+                </div>
+
+                <div style={{background:'var(--surface2)',borderRadius:12,padding:'14px 16px',marginBottom:16}}>
+                  <div style={{display:'grid',gridTemplateColumns:'72px 1fr 60px 52px',gap:'6px 10px',alignItems:'center'}}>
+                    <span style={{fontSize:'11px',fontWeight:700,color:'var(--text3)',textTransform:'uppercase'}}>Horizonte</span>
+                    <span style={{fontSize:'11px',fontWeight:700,color:'var(--text3)',textTransform:'uppercase'}}>MAE</span>
+                    <span style={{fontSize:'11px',fontWeight:700,color:'var(--text3)',textTransform:'uppercase'}}>Viés</span>
+                    <span style={{fontSize:'11px',fontWeight:700,color:'var(--text3)',textTransform:'uppercase'}}>±20</span>
+                    {horizons.map(({t,label})=>(
+                      <React.Fragment key={t}>
+                        <span style={{fontSize:'13px',fontWeight:600,color:'var(--text)'}}>{label}</span>
+                        <MaeBar v={predData[t]?.mae}/>
+                        <BiasTag v={predData[t]?.bias}/>
+                        <P20Tag v={predData[t]?.p20}/>
+                      </React.Fragment>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{fontSize:'12px',fontWeight:700,color:'var(--text2)',marginBottom:8,textTransform:'uppercase',letterSpacing:'.5px'}}>Por zona glicêmica</div>
+                <div style={{display:'flex',flexDirection:'column',gap:8}}>
+                  {(predData.zones||[]).sort((a,b)=>a.zona<b.zona?-1:1).map(z=>(
+                    <div key={z.zona} style={{background:'var(--surface2)',borderRadius:10,padding:'10px 14px'}}>
+                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
+                        <span style={{fontSize:'13px',fontWeight:700,color:zoneLabel[z.zona]?.col||'var(--text)'}}>
+                          {zoneLabel[z.zona]?.label||z.zona}
+                        </span>
+                        <span style={{fontSize:'11px',color:'var(--text3)',background:'var(--surface)',padding:'2px 8px',borderRadius:20}}>{z.n} amostras</span>
+                      </div>
+                      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:6}}>
+                        {[{t:'t30',l:'+30'},{t:'t60',l:'+60'},{t:'t90',l:'+90'}].map(({t,l})=>(
+                          <div key={t} style={{textAlign:'center'}}>
+                            <div style={{fontSize:'11px',color:'var(--text3)',marginBottom:2}}>{l}</div>
+                            <BiasTag v={z[t]?.bias}/>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div style={{marginTop:16,fontSize:'11px',color:'var(--text3)',lineHeight:1.6}}>
+                  <strong>MAE</strong> = erro médio absoluto (mg/dL) · <strong>Viés</strong> = actual − previsto · <strong>±20</strong> = % dentro de ±20 mg/dL
+                </div>
+              </>
+            )}
+            {predData && predData.total === 0 && (
+              <div style={{textAlign:'center',padding:'32px 0',color:'var(--text2)'}}>Nenhuma previsão validada ainda.</div>
+            )}
+          </>
         )}
       </div>
     </div>
