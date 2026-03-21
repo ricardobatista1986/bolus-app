@@ -2631,17 +2631,8 @@ function DashboardModal({open, onClose}) {
                     col={glStats.titr<35?'#ef4444':glStats.titr<50?'#f59e0b':'var(--green)'}/>
                 </div>
 
-                <div style={{fontSize:'11px',color:'var(--text3)',lineHeight:2.0,marginTop:6}}>
-                  <strong style={{color:'var(--text2)'}}>Legenda das métricas:</strong><br/>
-                  <strong style={{color:'var(--text2)'}}>TIR</strong> tempo na faixa 70–180 mg/dL — meta ≥70%<br/>
-                  <strong style={{color:'var(--text2)'}}>TBR</strong> tempo abaixo 70 mg/dL — meta &lt;4%<br/>
-                  <strong style={{color:'var(--text2)'}}>TAR</strong> tempo acima 180 mg/dL — meta &lt;25%<br/>
-                  <strong style={{color:'var(--text2)'}}>Hipo severa &lt;54</strong> — meta &lt;1% (nível 2, risco real)<br/>
-                  <strong style={{color:'var(--text2)'}}>Hiper severa &gt;250</strong> — meta &lt;5% (nível 2, risco cetose)<br/>
-                  <strong style={{color:'var(--text2)'}}>CV</strong> coeficiente de variação (SD÷média×100) — meta &lt;36%<br/>
-                  <strong style={{color:'var(--text2)'}}>Faixa rígida 70–140</strong> — referência T1D controlado, meta &gt;50%<br/>
-                  <strong style={{color:'var(--text2)'}}>HbA1c est.</strong> GMI: 3.31 + 0.02392 × glicemia média — meta &lt;7%<br/>
-                  {glStats.n.toLocaleString()} leituras · Supabase glucose_readings
+                <div style={{fontSize:'11px',color:'var(--text3)',marginTop:6}}>
+                  {glStats.n.toLocaleString()} leituras · {period} dias
                 </div>
               </>
             )}
