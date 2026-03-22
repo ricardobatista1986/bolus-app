@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
   <title>DM1</title>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
@@ -20,16 +20,20 @@
       --surface:    #fefcf9;             /* branco levemente quente */
       --surface2:   #ece8e1;             /* hover/elevação — mesmo tom quente */
       --border:     rgba(20,12,4,.09);   /* borda orgânica, não fria */
-      --shadow-sm:  0 1px 3px rgba(20,12,4,.07), 0 1px 2px rgba(20,12,4,.04);
-      --shadow-md:  0 6px 24px rgba(20,12,4,.10);
+      --shadow-sm:  0 1px 2px rgba(20,12,4,.04), 0 2px 8px rgba(20,12,4,.05);
+      --shadow-md:  0 4px 20px rgba(20,12,4,.07), 0 1px 4px rgba(20,12,4,.04);
       --text:       #1a1410;             /* quase-preto quente */
       --text2:      #4a3f36;             /* marrom-cinza legível */
       --text3:      #8a7b6e;             /* hint — quente, não acinzentado */
       --accent:     #0d9488;             /* teal-600 — saúde, calma, foco */
       --accent2:    #0f766e;             /* teal-700 — hover/ativo */
-      --accent-muted: rgba(13,148,136,.10); /* fundo teal suave */
-      --radius:     13px;
-      --font:       'Outfit', -apple-system, sans-serif;
+      --accent-muted: rgba(13,148,136,.10);
+      --green:      #16a34a;
+      --amber:      #b45309;
+      --red:        #dc2626;
+      --radius:     16px;
+      --radius-sm:  10px;
+      --font:       'Manrope', -apple-system, sans-serif;
       --mono:       'DM Mono', monospace;
       --bar-h:      62px;
     }
@@ -50,6 +54,9 @@
       --accent:     #2dd4bf;              /* teal-400: accent único, limpo */
       --accent2:    #14b8a6;              /* teal-500: hover */
       --accent-muted: rgba(45,212,191,.10);
+      --green:      #4ade80;
+      --amber:      #fbbf24;
+      --red:        #f87171;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body, #root { height: 100%; }
@@ -58,7 +65,7 @@
       color: var(--text);
       font-family: var(--font);
       font-size: 14px;
-      letter-spacing: -0.01em;
+      letter-spacing: 0.01em;
       transition: background .25s, color .25s;
       -webkit-font-smoothing: antialiased;
     }
@@ -97,12 +104,12 @@
     }
     .btn {
       border: none;
-      border-radius: 10px;
+      border-radius: var(--radius-sm);
       padding: 9px 16px;
       font-family: var(--font);
       font-size: 13px;
       font-weight: 600;
-      letter-spacing: -0.01em;
+      letter-spacing: 0.01em;
       cursor: pointer;
       transition: all .16s;
     }
@@ -120,7 +127,7 @@
       position: fixed; bottom: 0; left: 0; right: 0; z-index: 501;
       height: 88vh;
       background: var(--surface);
-      border-radius: 22px 22px 0 0;
+      border-radius: 24px 24px 0 0;
       box-shadow: 0 -8px 40px rgba(0,0,0,.22);
       display: flex; flex-direction: column;
       animation: slideUp .28s cubic-bezier(.32,1.2,.56,1);
@@ -2525,13 +2532,13 @@ function DashboardModal({open, onClose}) {
   // ── Componentes visuais
   const BiasTag = ({v}) => {
     if(v==null) return null;
-    const col = Math.abs(v)<=5?'var(--green)':Math.abs(v)<=15?'var(--amber)':'#ef4444';
+    const col = Math.abs(v)<=5?'var(--green)':Math.abs(v)<=15?'var(--amber)':'var(--red)';
     return <span style={{fontSize:'11px',padding:'2px 6px',borderRadius:'4px',background:`${col}20`,color:col,fontWeight:700}}>{v>0?'+':''}{v}</span>;
   };
   const MaeBar = ({v,max=80}) => {
     if(v==null) return null;
     const pct = Math.min(100,v/max*100);
-    const col = v<=30?'var(--green)':v<=55?'var(--amber)':'#ef4444';
+    const col = v<=30?'var(--green)':v<=55?'var(--amber)':'var(--red)';
     return (
       <div style={{display:'flex',alignItems:'center',gap:6}}>
         <div style={{flex:1,height:6,background:'var(--surface2)',borderRadius:3,overflow:'hidden'}}>
@@ -2543,7 +2550,7 @@ function DashboardModal({open, onClose}) {
   };
   const P20Tag = ({v}) => {
     if(v==null) return null;
-    const col = v>=70?'var(--green)':v>=50?'var(--amber)':'#ef4444';
+    const col = v>=70?'var(--green)':v>=50?'var(--amber)':'var(--red)';
     return <span style={{fontSize:'12px',fontWeight:700,color:col}}>{v}%</span>;
   };
 
@@ -2555,7 +2562,7 @@ function DashboardModal({open, onClose}) {
     const segs = [
       {pct:tir/100, col:'#22c55e'},
       {pct:tar/100, col:'#f97316'},
-      {pct:tbr/100, col:'#ef4444'},
+      {pct:tbr/100, col:'var(--red)'},
     ];
     let cum = 0; // acumula offset
     return (
@@ -2593,7 +2600,7 @@ function DashboardModal({open, onClose}) {
     </div>
   );
 
-  const zoneLabel = {hiper:{label:'Hiper ≥180',col:'#f59e0b'},alvo:{label:'Alvo 70–179',col:'var(--green)'},hipo:{label:'Hipo <70',col:'#ef4444'}};
+  const zoneLabel = {hiper:{label:'Hiper ≥180',col:'#f59e0b'},alvo:{label:'Alvo 70–179',col:'var(--green)'},hipo:{label:'Hipo <70',col:'var(--red)'}};
   const horizons  = [{t:'t30',label:'+30min'},{t:'t60',label:'+60min'},{t:'t90',label:'+90min'}];
 
   return (
@@ -2643,7 +2650,7 @@ function DashboardModal({open, onClose}) {
             </div>
 
             {glLoad && <div style={{textAlign:'center',padding:'40px 0',color:'var(--text2)'}}>Carregando…</div>}
-            {glErr  && <div style={{textAlign:'center',padding:'20px 0',color:'#ef4444',fontSize:'13px'}}>{glErr}</div>}
+            {glErr  && <div style={{textAlign:'center',padding:'20px 0',color:'var(--red)',fontSize:'13px'}}>{glErr}</div>}
 
             {glStats && glStats.n > 0 && (
               <>
@@ -2661,7 +2668,7 @@ function DashboardModal({open, onClose}) {
                     {[
                       {col:'#22c55e',label:'Na faixa',    pct:glStats.tir},
                       {col:'#f97316',label:'Acima >180',  pct:glStats.tar},
-                      {col:'#ef4444',label:'Abaixo <70',  pct:glStats.tbr},
+                      {col:'var(--red)',label:'Abaixo <70',  pct:glStats.tbr},
                     ].map(({col,label,pct})=>(
                       <div key={label}>
                         <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:5,marginBottom:3}}>
@@ -2677,22 +2684,22 @@ function DashboardModal({open, onClose}) {
                 {/* Grid de métricas 2×2 — padrão AGP */}
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:10}}>
                   <StatCard label="Glicemia Média" value={glStats.avg} unit="mg/dL"
-                    col={glStats.avg>180?'#f59e0b':glStats.avg<70?'#ef4444':'var(--text)'}/>
+                    col={glStats.avg>180?'#f59e0b':glStats.avg<70?'var(--red)':'var(--text)'}/>
                   <StatCard label="HbA1c estimada" value={glStats.a1c} unit="%"
                     sub="GMI: 3.31 + 0.02392×avg"
-                    col={glStats.a1c>=8?'#ef4444':glStats.a1c>=7?'#f59e0b':'var(--green)'}/>
+                    col={glStats.a1c>=8?'var(--red)':glStats.a1c>=7?'#f59e0b':'var(--green)'}/>
                   <StatCard label="Hipo severa <54" value={glStats.tbr54} unit="%"
                     sub="meta: <1%"
-                    col={glStats.tbr54>=1?'#ef4444':glStats.tbr54>=0.5?'#f59e0b':'var(--green)'}/>
+                    col={glStats.tbr54>=1?'var(--red)':glStats.tbr54>=0.5?'#f59e0b':'var(--green)'}/>
                   <StatCard label="Hiper severa >250" value={glStats.tar250} unit="%"
                     sub="meta: <5%"
-                    col={glStats.tar250>=5?'#ef4444':glStats.tar250>=2?'#f59e0b':'var(--green)'}/>
+                    col={glStats.tar250>=5?'var(--red)':glStats.tar250>=2?'#f59e0b':'var(--green)'}/>
                   <StatCard label="Coef. Variação" value={glStats.cv} unit="%"
                     sub="meta: <36%"
-                    col={glStats.cv>=36?'#ef4444':glStats.cv>=33?'#f59e0b':'var(--green)'}/>
+                    col={glStats.cv>=36?'var(--red)':glStats.cv>=33?'#f59e0b':'var(--green)'}/>
                   <StatCard label="Faixa rígida" value={glStats.titr} unit="%"
                     sub="70–140 mg/dL · meta: >50%"
-                    col={glStats.titr<35?'#ef4444':glStats.titr<50?'#f59e0b':'var(--green)'}/>
+                    col={glStats.titr<35?'var(--red)':glStats.titr<50?'#f59e0b':'var(--green)'}/>
                 </div>
 
                 <div style={{fontSize:'11px',color:'var(--text3)',marginTop:6}}>
@@ -2727,7 +2734,7 @@ function DashboardModal({open, onClose}) {
             </div>
 
             {agpLoad && <div style={{textAlign:'center',padding:'40px 0',color:'var(--text2)'}}>Carregando…</div>}
-            {agpErr  && <div style={{textAlign:'center',padding:'20px 0',color:'#ef4444',fontSize:'13px'}}>{agpErr}</div>}
+            {agpErr  && <div style={{textAlign:'center',padding:'20px 0',color:'var(--red)',fontSize:'13px'}}>{agpErr}</div>}
 
             {agpData && agpData.slots && agpData.slots.filter(Boolean).length > 0 && (() => {
               const slots   = agpData.slots;
@@ -2848,7 +2855,7 @@ function DashboardModal({open, onClose}) {
         {tab==='pred' && (
           <>
             {predLoad && <div style={{textAlign:'center',padding:'40px 0',color:'var(--text2)'}}>Carregando…</div>}
-            {predErr  && <div style={{textAlign:'center',padding:'20px 0',color:'#ef4444',fontSize:'13px'}}>{predErr}</div>}
+            {predErr  && <div style={{textAlign:'center',padding:'20px 0',color:'var(--red)',fontSize:'13px'}}>{predErr}</div>}
 
             {predData && predData.total > 0 && (
               <>
