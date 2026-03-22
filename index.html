@@ -2301,7 +2301,7 @@ function GlucoseChart({glucoseData, history, activeDoses, onRowsUpdate}) {
         </button>
       </div>
       {/* Canvas sempre no DOM — mostra/oculta via display */}
-      <div style={{flex:1,position:"relative",minHeight:0,maxHeight:"calc(100% - 80px)",display:show?"block":"none"}}>
+      <div style={{flex:1,position:"relative",minHeight:0,display:show?"block":"none"}}>
         <canvas ref={canvasRef} style={{width:"100%",height:"100%"}}/>
       </div>
       {count!=null&&show&&(
@@ -4137,7 +4137,7 @@ COB adicionado ao modelo. Previsões atualizadas.`,
         />
 
         {/* GLICEMIA + BIBLIOTECA — chart sempre visível, library como overlay */}
-        <div style={{flex:1,position:"relative",minHeight:0,overflow:"hidden",display:"flex",flexDirection:"column",
+        <div style={{height:"40vh",flexShrink:0,position:"relative",minHeight:0,overflow:"hidden",display:"flex",flexDirection:"column",
           paddingBottom:"var(--bar-h)"}}>
           <GlucoseChart glucoseData={glucose} history={history} activeDoses={doses} onRowsUpdate={r=>chartRowsRef.current=r}/>
           {tab==="library" && (
