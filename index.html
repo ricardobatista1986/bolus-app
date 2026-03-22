@@ -925,18 +925,22 @@ const renderMD = text => {
 /* ── EXTRACT CARBS — multiple patterns for LLM output variance ─────────── */
 const extractCarbs = text => {
   if(!text) return null;
-  // Suporta decimais: 21,5g / 21.5g -- normaliza virgula para ponto
   const parseG = s => { const v = parseFloat(s.replace(",",".")); return isNaN(v)?null:Math.round(v); };
-  const pats = [
+  // Fase 1: padrões que exigem contexto "Total" — captura o total declarado pela IA
+  const totalPats = [
     /\|\s*\*{0,2}Total\*{0,2}\s*\|[^|]*\|\s*\*?(\d+(?:[.,]\d+)?)\s*g?\*?\s*\|/i, // Tabela row Total
     /\*{0,2}Total\*{0,2}[:\s*]+(\d+(?:[.,]\d+)?)\s*g\*{0,2}/i,
     /Total\s*(?:CHO|de\s+carboidratos)?[:\s]+(\d+(?:[.,]\d+)?)\s*g/i,
-    /Total[^0-9]{0,15}(\d+(?:[.,]\d+)?)\s*g\s*CHO/i,
+    /Total[^0-9]{0,15}(\d+(?:[.,]\d+)?)\s*g\s*(?:de\s*)?CHO/i,
     /CHO\s*total[:\s]+(\d+(?:[.,]\d+)?)\s*g/i,
-    /(\d+(?:[.,]\d+)?)\s*g\s*(?:de\s*)?(?:CHO|carboidratos?)(?:\s+total)?/i,
-    /Total.*?(\d+(?:[.,]\d+)?)\s*g/i // Fallback agressivo
+    /Total.*?(\d+(?:[.,]\d+)?)\s*g/i,
   ];
-  for(const p of pats){ const m=text.match(p); if(m){const v=parseG(m[1]);if(v&&v>0&&v<=300)return v;} }
+  for(const p of totalPats){ const m=text.match(p); if(m){const v=parseG(m[1]);if(v&&v>0&&v<=300)return v;} }
+  // Fase 2: se nenhum padrão com "Total" achou, pega TODOS os "Xg CHO" e retorna o MAIOR
+  // (o total é sempre o maior; evita capturar o menor ingrediente listado antes)
+  const all = [...text.matchAll(/(\d+(?:[.,]\d+)?)\s*g\s*(?:de\s*)?(?:CHO|carboidratos?)/gi)]
+    .map(m => parseG(m[1])).filter(v => v && v > 0 && v <= 300);
+  if(all.length) return Math.max(...all);
   return null;
 };
 
@@ -3024,18 +3028,32 @@ function SettingsModal({open, onClose}) {
                   <span style={{marginLeft:"auto"}}>G 2h: <strong style={{color:"var(--text)"}}>{r.g2hMed}</strong></span>
                 </div>
                 {r.sugestao ? (
-                  <div style={{display:"flex",alignItems:"center",gap:"8px",
-                    background:r.nAlto>r.nBaixo?"rgba(249,115,22,.1)":"rgba(239,68,68,.1)",
-                    borderRadius:"7px",padding:"7px 10px"}}>
-                    <span style={{fontSize:"12px",color:r.nAlto>r.nBaixo?"#f97316":"#ef4444",flex:1}}>
-                      {r.nAlto>r.nBaixo
-                        ? `Glicemia pós-refeição cronicamente alta — dose possivelmente insuficiente`
-                        : `Glicemia pós-refeição baixa com frequência — dose possivelmente excessiva`}
-                    </span>
-                    <div style={{textAlign:"center",flexShrink:0}}>
-                      <div style={{fontSize:"10px",color:"var(--text3)"}}>sugestão</div>
-                      <div style={{fontSize:"15px",fontWeight:800,color:"var(--accent)"}}>1:{r.sugestao}</div>
+                  <div style={{borderRadius:"7px",overflow:"hidden",
+                    background:r.nAlto>r.nBaixo?"rgba(249,115,22,.1)":"rgba(239,68,68,.1)"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:"8px",padding:"7px 10px"}}>
+                      <span style={{fontSize:"12px",color:r.nAlto>r.nBaixo?"#f97316":"#ef4444",flex:1}}>
+                        {r.nAlto>r.nBaixo
+                          ? `Glicemia pós-refeição cronicamente alta — dose possivelmente insuficiente`
+                          : `Glicemia pós-refeição baixa com frequência — dose possivelmente excessiva`}
+                      </span>
+                      <div style={{textAlign:"center",flexShrink:0}}>
+                        <div style={{fontSize:"10px",color:"var(--text3)"}}>sugestão</div>
+                        <div style={{fontSize:"15px",fontWeight:800,color:"var(--accent)"}}>1:{r.sugestao}</div>
+                      </div>
                     </div>
+                    <button
+                      onClick={()=>setDraft(d=>({...d,
+                        icrRanges:d.icrRanges.map(dr=>dr.id===r.id
+                          ? {...dr, icr:String(Math.round(r.sugestao))}
+                          : dr)
+                      }))}
+                      style={{width:"100%",padding:"7px",border:"none",borderTop:"1px solid rgba(0,0,0,.08)",
+                        background:r.nAlto>r.nBaixo?"rgba(249,115,22,.15)":"rgba(239,68,68,.15)",
+                        color:r.nAlto>r.nBaixo?"#f97316":"#ef4444",
+                        fontSize:"12px",fontWeight:700,cursor:"pointer",
+                        fontFamily:"var(--font)",touchAction:"manipulation"}}>
+                      Aplicar 1:{Math.round(r.sugestao)} nesta faixa →
+                    </button>
                   </div>
                 ) : (
                   <div style={{fontSize:"11px",color:"var(--green)",padding:"4px 0"}}>
