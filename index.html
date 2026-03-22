@@ -2348,8 +2348,8 @@ const subscribeToPush = async () => {
 /* ── DASHBOARD MODAL (Camada 3) ───────────────────────────────────────── */
 function DashboardModal({open, onClose}) {
   const {dark} = useContext(ThemeCtx);
-  const [tab,     setTab]     = React.useState('stats');   // 'stats' | 'pred'
-  const [period,  setPeriod]  = React.useState(14);        // dias para aba stats
+  const [tab,     setTab]     = React.useState('stats');   // 'stats' | 'pred' | 'agp'
+  const [period,  setPeriod]  = React.useState(14);        // dias para abas stats + agp
 
   // ── Estado aba Previsões
   const [predData,  setPredData]  = React.useState(null);
@@ -2362,6 +2362,12 @@ function DashboardModal({open, onClose}) {
   const [glErr,    setGlErr]    = React.useState(null);
   // Cache por período para não refetch ao trocar de aba
   const glCache = React.useRef({});
+
+  // ── Estado aba AGP
+  const [agpData,  setAgpData]  = React.useState(null);
+  const [agpLoad,  setAgpLoad]  = React.useState(false);
+  const [agpErr,   setAgpErr]   = React.useState(null);
+  const agpCache = React.useRef({});
 
   const headers = { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` };
 
@@ -2456,7 +2462,61 @@ function DashboardModal({open, onClose}) {
   },[open, tab, period]);
 
   // Reset cache ao fechar para sempre buscar dados frescos no próximo open
-  React.useEffect(()=>{ if(!open) glCache.current={}; },[open]);
+  React.useEffect(()=>{ if(!open){ glCache.current={}; agpCache.current={}; } },[open]);
+
+  // ── Fetch AGP (recarrega ao mudar período, com cache)
+  React.useEffect(()=>{
+    if(!open || tab!=='agp') return;
+    if(agpCache.current[period]){ setAgpData(agpCache.current[period]); return; }
+    setAgpLoad(true); setAgpErr(null); setAgpData(null);
+    (async()=>{
+      try {
+        const since = new Date(Date.now() - period*24*3600000).toISOString();
+        const res = await fetch(
+          `${SUPABASE_URL}/rest/v1/glucose_readings?select=value,captured_at&captured_at=gte.${since}&order=captured_at.asc&limit=10000`,
+          { headers }
+        );
+        if(!res.ok) throw new Error('Supabase indisponível');
+        const rows = await res.json();
+        const vals = rows.filter(r=>r.value>=40&&r.value<=400);
+        if(!vals.length){ const d={slots:[]}; agpCache.current[period]=d; setAgpData(d); return; }
+
+        // Agrupa por slot de 30min (48 slots × 24h)
+        const buckets = Array.from({length:48},()=>[]);
+        for(const r of vals){
+          const d = new Date(r.captured_at);
+          // Ajuste UTC-3 (São Paulo)
+          const localH = (d.getUTCHours() - 3 + 24) % 24;
+          const localM = d.getUTCMinutes();
+          const slot = localH*2 + (localM >= 30 ? 1 : 0);
+          buckets[slot].push(r.value);
+        }
+
+        // Percentil usando interpolação linear
+        const pct = (arr, p) => {
+          const s = [...arr].sort((a,b)=>a-b);
+          const idx = (p/100)*(s.length-1);
+          const lo = Math.floor(idx), hi = Math.ceil(idx);
+          return lo===hi ? s[lo] : Math.round(s[lo]+(s[hi]-s[lo])*(idx-lo));
+        };
+
+        const slots = buckets.map((b,i)=>{
+          if(b.length < 3) return null; // slot sem dados suficientes
+          return {
+            slot: i,
+            hm: `${String(Math.floor(i/2)).padStart(2,'0')}:${i%2===0?'00':'30'}`,
+            p5:  pct(b,5),  p25: pct(b,25), p50: pct(b,50),
+            p75: pct(b,75), p95: pct(b,95),
+          };
+        });
+
+        const d = { slots, n: vals.length, days: period };
+        agpCache.current[period] = d;
+        setAgpData(d);
+      } catch(e){ setAgpErr(e.message); }
+      finally{ setAgpLoad(false); }
+    })();
+  },[open, tab, period]);
 
   if(!open) return null;
   const ov = {position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:200,display:'flex',alignItems:'flex-end',justifyContent:'center'};
@@ -2551,7 +2611,7 @@ function DashboardModal({open, onClose}) {
 
         {/* ── Tabs */}
         <div style={{display:'flex',background:'var(--surface2)',borderRadius:10,padding:3,marginBottom:18,gap:3}}>
-          {[{k:'stats',l:'Glicemia'},{k:'pred',l:'Previsões'}].map(({k,l})=>(
+          {[{k:'stats',l:'Glicemia'},{k:'agp',l:'Padrão 24h'},{k:'pred',l:'Previsões'}].map(({k,l})=>(
             <button key={k} onClick={()=>setTab(k)}
               style={{flex:1,padding:'7px 0',borderRadius:8,border:'none',cursor:'pointer',fontWeight:600,fontSize:'13px',
                 fontFamily:'var(--font)',transition:'all .2s',
@@ -2641,6 +2701,142 @@ function DashboardModal({open, onClose}) {
               </>
             )}
             {glStats && glStats.n === 0 && (
+              <div style={{textAlign:'center',padding:'32px 0',color:'var(--text2)'}}>Sem leituras no período.</div>
+            )}
+          </>
+        )}
+
+
+        {/* ══════════════════════════════
+            ABA AGP — PADRÃO 24H
+        ══════════════════════════════ */}
+        {tab==='agp' && (
+          <>
+            {/* Seletor de período — compartilhado com stats */}
+            <div style={{display:'flex',gap:6,marginBottom:18,justifyContent:'center'}}>
+              {[{d:7,l:'7 dias'},{d:14,l:'14 dias'},{d:30,l:'30 dias'},{d:90,l:'90 dias'}].map(({d,l})=>(
+                <button key={d} onClick={()=>setPeriod(d)}
+                  style={{padding:'5px 12px',borderRadius:20,border:'1px solid',cursor:'pointer',
+                    fontSize:'12px',fontWeight:600,fontFamily:'var(--font)',
+                    background:period===d?'var(--accent)':'var(--surface2)',
+                    color:period===d?'white':'var(--text2)',
+                    borderColor:period===d?'var(--accent)':'var(--border)'}}>
+                  {l}
+                </button>
+              ))}
+            </div>
+
+            {agpLoad && <div style={{textAlign:'center',padding:'40px 0',color:'var(--text2)'}}>Carregando…</div>}
+            {agpErr  && <div style={{textAlign:'center',padding:'20px 0',color:'#ef4444',fontSize:'13px'}}>{agpErr}</div>}
+
+            {agpData && agpData.slots && agpData.slots.filter(Boolean).length > 0 && (() => {
+              const slots   = agpData.slots;
+              const W = 340, H = 220;
+              const PAD = {t:12, r:10, b:32, l:38};
+              const CW = W - PAD.l - PAD.r;
+              const CH = H - PAD.t - PAD.b;
+              const YMIN = 40, YMAX = 320;
+
+              const xOf  = i  => PAD.l + (i/47)*CW;
+              const yOf  = v  => PAD.t + CH - ((v-YMIN)/(YMAX-YMIN))*CH;
+              const clamp = v => Math.max(YMIN, Math.min(YMAX, v));
+
+              // Filtra slots com dados
+              const valid = slots.map((s,i)=>s?{...s,i}:null).filter(Boolean);
+
+              // Gera pontos para path
+              const pathD = (field, rev=false) => {
+                const pts = rev ? [...valid].reverse() : valid;
+                return pts.map((s,j)=>`${j===0?'M':'L'}${xOf(s.i).toFixed(1)},${yOf(clamp(s[field])).toFixed(1)}`).join(' ');
+              };
+              const polyP5P95  = pathD('p5') + ' ' + pathD('p95',true) + ' Z';
+              const polyP25P75 = pathD('p25') + ' ' + pathD('p75',true) + ' Z';
+
+              // X ticks: 0,3,6,9,12,15,18,21,24h → slots 0,6,12,18,24,30,36,42,48
+              const xTicks = [0,6,12,18,24,30,36,42,47];
+
+              // Y ticks
+              const yTicks = [70,100,140,180,250,300];
+
+              // Zona alvo 70-180
+              const yT70  = yOf(70).toFixed(1);
+              const yT180 = yOf(180).toFixed(1);
+              const zoneH = (yT70 - yT180).toFixed(1);
+
+              return (
+                <div style={{background:'var(--surface2)',borderRadius:14,padding:'14px 10px 10px',marginBottom:14}}>
+                  <div style={{fontSize:'12px',fontWeight:700,color:'var(--text2)',textTransform:'uppercase',letterSpacing:'.4px',marginBottom:10,paddingLeft:4}}>
+                    Perfil Glicêmico Ambulatorial · {period} dias
+                  </div>
+                  <svg viewBox={`0 0 ${W} ${H}`} style={{width:'100%',height:'auto',display:'block'}}>
+                    {/* Zona alvo 70–180 */}
+                    <rect x={PAD.l} y={yT180} width={CW} height={zoneH}
+                      fill="rgba(34,197,94,.10)"/>
+
+                    {/* Grid Y */}
+                    {yTicks.map(v=>(
+                      <g key={v}>
+                        <line x1={PAD.l} y1={yOf(v)} x2={PAD.l+CW} y2={yOf(v)}
+                          stroke={v===70||v===180?'rgba(34,197,94,.4)':'var(--border)'}
+                          strokeWidth={v===70||v===180?1:0.5}
+                          strokeDasharray={v===70||v===180?'3 3':undefined}/>
+                        <text x={PAD.l-3} y={yOf(v)+4} textAnchor="end"
+                          fontSize="9" fill="var(--text3)" fontFamily="var(--font)">{v}</text>
+                      </g>
+                    ))}
+
+                    {/* Grid X */}
+                    {xTicks.map(slot=>(
+                      <g key={slot}>
+                        <line x1={xOf(slot)} y1={PAD.t} x2={xOf(slot)} y2={PAD.t+CH}
+                          stroke="var(--border)" strokeWidth={0.5}/>
+                        <text x={xOf(slot)} y={PAD.t+CH+12} textAnchor="middle"
+                          fontSize="9" fill="var(--text3)" fontFamily="var(--font)">
+                          {slot===47?'24':String(Math.floor(slot/2)).padStart(2,'0')}h
+                        </text>
+                      </g>
+                    ))}
+
+                    {/* Banda P5–P95 */}
+                    <path d={polyP5P95} fill={dark?'rgba(45,212,191,.12)':'rgba(13,148,136,.10)'}/>
+
+                    {/* Banda P25–P75 */}
+                    <path d={polyP25P75} fill={dark?'rgba(45,212,191,.28)':'rgba(13,148,136,.22)'}/>
+
+                    {/* Mediana P50 */}
+                    <path d={pathD('p50')}
+                      fill="none" stroke="var(--accent)" strokeWidth="2.5"
+                      strokeLinejoin="round" strokeLinecap="round"/>
+
+                    {/* Linhas limites zona alvo */}
+                    <line x1={PAD.l} y1={yOf(70)}  x2={PAD.l+CW} y2={yOf(70)}
+                      stroke="#22c55e" strokeWidth="1" strokeDasharray="4 3" opacity="0.7"/>
+                    <line x1={PAD.l} y1={yOf(180)} x2={PAD.l+CW} y2={yOf(180)}
+                      stroke="#22c55e" strokeWidth="1" strokeDasharray="4 3" opacity="0.7"/>
+                  </svg>
+
+                  {/* Legenda */}
+                  <div style={{display:'flex',alignItems:'center',gap:14,paddingLeft:4,flexWrap:'wrap'}}>
+                    <div style={{display:'flex',alignItems:'center',gap:5}}>
+                      <svg width="24" height="8"><line x1="0" y1="4" x2="24" y2="4" stroke="var(--accent)" strokeWidth="2.5"/></svg>
+                      <span style={{fontSize:'11px',color:'var(--text3)'}}>Mediana (P50)</span>
+                    </div>
+                    <div style={{display:'flex',alignItems:'center',gap:5}}>
+                      <div style={{width:16,height:10,borderRadius:3,background:dark?'rgba(45,212,191,.28)':'rgba(13,148,136,.22)'}}/>
+                      <span style={{fontSize:'11px',color:'var(--text3)'}}>P25–P75 (50% do tempo)</span>
+                    </div>
+                    <div style={{display:'flex',alignItems:'center',gap:5}}>
+                      <div style={{width:16,height:10,borderRadius:3,background:dark?'rgba(45,212,191,.12)':'rgba(13,148,136,.10)'}}/>
+                      <span style={{fontSize:'11px',color:'var(--text3)'}}>P5–P95 (90% do tempo)</span>
+                    </div>
+                  </div>
+                  <div style={{fontSize:'11px',color:'var(--text3)',marginTop:8,paddingLeft:4}}>
+                    {agpData.n.toLocaleString()} leituras · banda verde = zona alvo 70–180 mg/dL
+                  </div>
+                </div>
+              );
+            })()}
+            {agpData && (!agpData.slots || agpData.slots.filter(Boolean).length === 0) && (
               <div style={{textAlign:'center',padding:'32px 0',color:'var(--text2)'}}>Sem leituras no período.</div>
             )}
           </>
