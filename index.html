@@ -233,6 +233,15 @@ const KEY_SETTINGS  = "bolus-settings-v1";
 const KEY_PREDSTORE = "bolus-predstore-v1"; // persiste predStoreRef entre sessões
 // food_library e prediction_validations → Supabase (sem localStorage)
 
+// ── Perfis de insulina rápida — onset/peak/dia em minutos ────────────────
+const INSULIN_PROFILES = {
+  fiasp:      { label:"Fiasp",           onset:10, peak:70,  dia:240 },
+  novorapid:  { label:"NovoRapid",       onset:15, peak:75,  dia:240 },
+  humalog:    { label:"Humalog",         onset:15, peak:75,  dia:240 },
+  apidra:     { label:"Apidra",          onset:15, peak:75,  dia:240 },
+  regular:    { label:"Regular (NPH)",   onset:30, peak:90,  dia:300 },
+};
+
 const DEFAULT_SETTINGS = {
   icrRanges: [
     { id: "1", start: "06:00", end: "18:00", icr: 5 },
@@ -241,6 +250,8 @@ const DEFAULT_SETTINGS = {
   isf:          30,   // mg/dL/U
   corrTarget:   110,  // alvo correção padrão
   corrPostMeal: 160,  // alvo pós-prandial (< 2h)
+  insulinType:  "fiasp",
+  profile: { name: "", photo: null },
 };
 // Singleton mutable usado pelas funções puras (fora do React)
 let appSettings = { ...DEFAULT_SETTINGS };
@@ -279,7 +290,11 @@ const GROQ_URL        = "https://api.groq.com/openai/v1/chat/completions";
 
 
 /* ── SYSTEM PROMPT (gerado dinamicamente a partir de settings) ─────────── */
-const buildSystemPrompt = (s = DEFAULT_SETTINGS) => `Você é um assistente especializado em contagem de carboidratos e cálculo de dose de insulina para diabetes tipo 1.
+const buildSystemPrompt = (s = DEFAULT_SETTINGS) => {
+const insLabel = (INSULIN_PROFILES[s.insulinType] || INSULIN_PROFILES.fiasp).label;
+const insMin   = (INSULIN_PROFILES[s.insulinType] || INSULIN_PROFILES.fiasp).dia;
+const nameStr  = s.profile?.name ? `\nNome do usuário: ${s.profile.name}.` : "";
+return `Você é um assistente especializado em contagem de carboidratos e cálculo de dose de insulina para diabetes tipo 1.${nameStr}
 
 REGRAS DE COMUNICAÇÃO:
 - Aceite qualquer forma de escrita em português: informal, abreviações, gírias, erros de digitação
@@ -300,7 +315,7 @@ HORA LOCAL:
 PERFIL DO USUÁRIO:
 - Diabetes tipo 1, FreeStyle Libre 2
 - Basal: Tresiba 35U manhã (fixa) | NPH 4U antes de dormir (fixa)
-- Bolus: Fiasp (~3,5h de ação)
+- Bolus: ${insLabel} (~${(insMin/60).toFixed(1)}h de ação)
 - Caneta SEM meias-unidades → arredondar dose final para inteiro (arredondar por ÚLTIMO)
 
 ICR:
@@ -459,6 +474,7 @@ Se for SÓ registro de exercício (sem refeição na mesma mensagem), responda A
 (Ex: **Exercício: ex_aerobico_moderado | 31m**)
 
 CRÍTICO: A linha **Arredondado: Xu** é OBRIGATÓRIA ao calcular doses. Nunca omita.`;
+};
 
 /* ── UTILS ─────────────────────────────────────────────────────────────── */
 const lsGet = k => { try { const v=localStorage.getItem(k); return v?JSON.parse(v):null; } catch{return null;} };
@@ -476,26 +492,30 @@ const sleep       = ms => new Promise(r => setTimeout(r, ms));
  * ─────────────────────────────────────────────────────────────────────── */
 const fiaspFracRemaining = e => {
   // e = minutos decorridos desde a injeção
-  if(e <= 0)             return 1;
-  if(e >= FIASP_DIA)     return 0;
-  if(e <= FIASP_ONSET)   return 1; // onset: nada absorvido ainda
-  const D = FIASP_DIA  - FIASP_ONSET; // 230
-  const P = FIASP_PEAK - FIASP_ONSET; // 60
+  // Curva triangular assimétrica — parâmetros do perfil de insulina configurado
+  const ins = INSULIN_PROFILES[appSettings?.insulinType] || INSULIN_PROFILES.fiasp;
+  const INS_ONSET = ins.onset, INS_PEAK = ins.peak, INS_DIA = ins.dia;
+  if(e <= 0)           return 1;
+  if(e >= INS_DIA)     return 0;
+  if(e <= INS_ONSET)   return 1;
+  const D = INS_DIA  - INS_ONSET;
+  const P = INS_PEAK - INS_ONSET;
   let absorbed;
-  if(e <= FIASP_PEAK){
-    const r = e - FIASP_ONSET;
+  if(e <= INS_PEAK){
+    const r = e - INS_ONSET;
     absorbed = (r*r) / (D*P);
   } else {
-    const r    = e - FIASP_PEAK;
-    const tail = FIASP_DIA - FIASP_PEAK; // 170
+    const r    = e - INS_PEAK;
+    const tail = INS_DIA - INS_PEAK;
     absorbed   = (P/D) + (2/D) * (r - (r*r)/(2*tail));
   }
   return Math.max(0, 1 - absorbed);
 };
 const calcIOB       = (units, at) => { if(!units||!at) return 0; return +(units * fiaspFracRemaining((Date.now()-at)/60000)).toFixed(2); };
 const calcTotalIOB  = doses => !doses?.length ? 0 : +doses.reduce((s,d)=>s+calcIOB(d.units,d.appliedAt),0).toFixed(1);
-const calcRemMin    = at => Math.max(0, Math.round(FIASP_DIA-(Date.now()-at)/60000));
-const calcEndTime   = at => at ? new Date(at+FIASP_DIA*60000) : null;
+const getInsDia     = () => (INSULIN_PROFILES[appSettings?.insulinType] || INSULIN_PROFILES.fiasp).dia;
+const calcRemMin    = at => Math.max(0, Math.round(getInsDia()-(Date.now()-at)/60000));
+const calcEndTime   = at => at ? new Date(at+getInsDia()*60000) : null;
 const filterDoses   = doses => (doses||[]).filter(d => calcRemMin(d.appliedAt)>0);
 
 /* ── CARBS ACTIVE LOGIC — curva triangular parametrizada (M2) ───────────
@@ -2937,6 +2957,8 @@ function SettingsModal({open, onClose}) {
     corrTarget:  String(s.corrTarget),
     corrPostMeal:String(s.corrPostMeal),
     icrRanges:   s.icrRanges.map(r=>({...r, icr:String(r.icr)})),
+    insulinType: s.insulinType || "fiasp",
+    profile:     s.profile || { name:"", photo:null },
   });
   const [draft, setDraft] = useState(()=>toStr(settings));
   const [adding, setAdding] = useState(false);
@@ -3118,6 +3140,87 @@ function SettingsModal({open, onClose}) {
 
         {/* Scroll body */}
         <div style={{overflow:"auto",flex:1,padding:"0 16px 8px",WebkitOverflowScrolling:"touch"}}>
+
+          {/* ── Perfil ── */}
+          <div style={{fontSize:"11px",fontWeight:700,color:"var(--text3)",textTransform:"uppercase",
+            letterSpacing:".06em",padding:"14px 0 10px"}}>Perfil</div>
+          <div style={{display:"flex",alignItems:"center",gap:"14px",marginBottom:"14px"}}>
+            {/* Avatar — foto ou iniciais */}
+            <label style={{cursor:"pointer",flexShrink:0}}>
+              <div style={{width:"60px",height:"60px",borderRadius:"50%",overflow:"hidden",
+                background:"var(--accent)",display:"flex",alignItems:"center",justifyContent:"center",
+                border:"2px solid var(--border)",boxShadow:"var(--shadow-sm)",position:"relative"}}>
+                {draft.profile?.photo
+                  ? <img src={draft.profile.photo} alt="foto"
+                      style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                  : <span style={{fontSize:"20px",fontWeight:800,color:"white",letterSpacing:"-1px"}}>
+                      {(draft.profile?.name||"?").split(" ").map(w=>w[0]?.toUpperCase()||"").slice(0,2).join("")}
+                    </span>
+                }
+                <div style={{position:"absolute",bottom:0,right:0,width:"20px",height:"20px",
+                  background:"var(--surface)",borderRadius:"50%",border:"1.5px solid var(--border)",
+                  display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                    <circle cx="12" cy="13" r="4"/>
+                  </svg>
+                </div>
+              </div>
+              <input type="file" accept="image/*" style={{display:"none"}}
+                onChange={e=>{
+                  const file = e.target.files?.[0];
+                  if(!file) return;
+                  const reader = new FileReader();
+                  reader.onload = ev => {
+                    // Redimensiona para 80×80 antes de salvar
+                    const img = new Image();
+                    img.onload = () => {
+                      const canvas = document.createElement("canvas");
+                      canvas.width = 80; canvas.height = 80;
+                      const ctx = canvas.getContext("2d");
+                      const s = Math.min(img.width, img.height);
+                      const ox = (img.width-s)/2, oy = (img.height-s)/2;
+                      ctx.drawImage(img, ox, oy, s, s, 0, 0, 80, 80);
+                      setDraft(d=>({...d, profile:{...d.profile, photo:canvas.toDataURL("image/jpeg",.7)}}));
+                    };
+                    img.src = ev.target.result;
+                  };
+                  reader.readAsDataURL(file);
+                  e.target.value = "";
+                }}/>
+            </label>
+            {/* Nome */}
+            <div style={{flex:1}}>
+              <div style={{fontSize:"11px",color:"var(--text3)",marginBottom:"5px",fontWeight:600}}>Nome</div>
+              <input type="text" value={draft.profile?.name||""} placeholder="Seu nome"
+                onChange={e=>setDraft(d=>({...d, profile:{...d.profile, name:e.target.value}}))}
+                style={{width:"100%",background:"var(--surface2)",border:"1px solid var(--border)",
+                  borderRadius:"10px",padding:"9px 12px",color:"var(--text)",fontSize:"14px",
+                  fontFamily:"var(--font)",touchAction:"manipulation"}}/>
+              {draft.profile?.photo && (
+                <button onClick={()=>setDraft(d=>({...d, profile:{...d.profile, photo:null}}))}
+                  style={{marginTop:"6px",fontSize:"11px",color:"var(--text3)",background:"none",
+                    border:"none",cursor:"pointer",padding:0,fontFamily:"var(--font)"}}>
+                  Remover foto
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Tipo de Insulina */}
+          <div style={{fontSize:"11px",color:"var(--text3)",marginBottom:"6px",fontWeight:600}}>Insulina bolus</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:"6px",marginBottom:"16px"}}>
+            {Object.entries(INSULIN_PROFILES).map(([key,{label}])=>(
+              <button key={key} onClick={()=>setDraft(d=>({...d, insulinType:key}))}
+                style={{padding:"6px 12px",borderRadius:"20px",border:"1px solid",cursor:"pointer",
+                  fontSize:"12px",fontWeight:600,fontFamily:"var(--font)",touchAction:"manipulation",
+                  background:draft.insulinType===key?"var(--accent)":"var(--surface2)",
+                  color:draft.insulinType===key?"white":"var(--text2)",
+                  borderColor:draft.insulinType===key?"var(--accent)":"var(--border)"}}>
+                {label}
+              </button>
+            ))}
+          </div>
 
           {/* ICR Ranges */}
           <div style={{fontSize:"11px",fontWeight:700,color:"var(--text3)",textTransform:"uppercase",
@@ -4083,10 +4186,20 @@ COB adicionado ao modelo. Previsões atualizadas.`,
         <div style={{padding:"0 14px",background:"var(--surface)",borderBottom:"1px solid var(--border)",
           display:"flex",alignItems:"center",gap:"8px",flexShrink:0,
           minHeight:"52px"}}>
-          <div style={{width:"32px",height:"32px",borderRadius:"10px",background:"var(--accent)",
-            display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,
-            boxShadow:"0 2px 8px rgba(13,148,136,.30)"}}>
-            <IcoSyringe s={17} c="white"/>
+          {/* Avatar — foto de perfil ou iniciais */}
+          <div onClick={()=>setSettingsOpen(true)}
+            style={{width:"32px",height:"32px",borderRadius:"50%",overflow:"hidden",background:"var(--accent)",
+              display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer",
+              boxShadow:"0 2px 8px rgba(13,148,136,.30)"}}>
+            {settings.profile?.photo
+              ? <img src={settings.profile.photo} alt="perfil"
+                  style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+              : settings.profile?.name
+                ? <span style={{fontSize:"12px",fontWeight:800,color:"white",letterSpacing:"-0.5px"}}>
+                    {settings.profile.name.split(" ").map(w=>w[0]?.toUpperCase()||"").slice(0,2).join("")}
+                  </span>
+                : <IcoSyringe s={17} c="white"/>
+            }
           </div>
           <div style={{flex:1,minWidth:0,overflow:"hidden"}}>
             <div style={{fontWeight:800,fontSize:"14px",color:"var(--text)",letterSpacing:"-0.02em",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>DM1</div>
