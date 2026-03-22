@@ -1009,11 +1009,11 @@ const ThemeCtx = createContext({ dark: false, toggle: ()=>{} });
 
 /* ── GLUCOSE ZONE — cores atualizadas: hiper = amarelo ────────────────── */
 const getZone = (v, dark) => {
-  if(v<55)  return{ color:dark?"#f87171":"#ef4444", label:"Hipo grave ⚠️",  bg: dark?"rgba(239,68,68,.18)":"rgba(239,68,68,.08)",    border:"rgba(239,68,68,.35)"   };
-  if(v<70)  return{ color:dark?"#f87171":"#ef4444", label:"Hipoglicemia",    bg: dark?"rgba(239,68,68,.12)":"rgba(254,226,226,.6)",   border:"rgba(239,68,68,.25)"   };
-  if(v<80)  return{ color:dark?"#fbbf24":"#f59e0b", label:"Atenção — baixo", bg: dark?"rgba(245,158,11,.12)":"rgba(254,243,199,.6)",  border:"rgba(245,158,11,.3)"   };
-  if(v<=180)return{ color:dark?"#4ade80":"#16a34a", label:"Na faixa",        bg: dark?"rgba(22,163,74,.12)":"rgba(220,252,231,.6)",   border:"rgba(22,163,74,.3)"    };
-  if(v<=250)return{ color:dark?"#facc15":"#ca8a04", label:"Acima do alvo",   bg: dark?"rgba(202,138,4,.12)":"rgba(254,249,195,.6)",   border:"rgba(202,138,4,.3)"    };
+  if(v<55)  return{ color:dark?"#fb7185":"#e11d48", label:"Hipo grave ⚠️",  bg: dark?"rgba(225,29,72,.18)":"rgba(225,29,72,.08)",    border:"rgba(225,29,72,.35)"   };
+  if(v<70)  return{ color:dark?"#fb7185":"#e11d48", label:"Hipoglicemia",    bg: dark?"rgba(225,29,72,.12)":"rgba(255,228,230,.6)",   border:"rgba(225,29,72,.25)"   };
+  if(v<80)  return{ color:dark?"#fbbf24":"#b45309", label:"Atenção — baixo", bg: dark?"rgba(180,83,9,.12)":"rgba(254,243,199,.6)",    border:"rgba(180,83,9,.3)"     };
+  if(v<=180)return{ color:dark?"#34d399":"#059669", label:"Na faixa",        bg: dark?"rgba(5,150,105,.12)":"rgba(209,250,229,.6)",   border:"rgba(5,150,105,.3)"    };
+  if(v<=250)return{ color:dark?"#fbbf24":"#b45309", label:"Acima do alvo",   bg: dark?"rgba(180,83,9,.12)":"rgba(254,249,195,.6)",   border:"rgba(180,83,9,.3)"     };
   return          { color:dark?"#fb923c":"#b45309", label:"Hiperglicemia",   bg: dark?"rgba(180,83,9,.15)":"rgba(254,243,199,.7)",    border:"rgba(180,83,9,.35)"    };
 };
 
@@ -2166,7 +2166,7 @@ function GlucoseChart({glucoseData, history, activeDoses, onRowsUpdate}) {
             const v = ctx.parsed?.y ?? 0;
             return v<70?"var(--red)":v<=180?"var(--green)":"var(--amber)";
           },
-          borderWidth:2.5,
+          borderWidth:3.5,
           tension:0.5,
           cubicInterpolationMode:'monotone',
           fill:false,
@@ -2175,10 +2175,10 @@ function GlucoseChart({glucoseData, history, activeDoses, onRowsUpdate}) {
             borderColor: ctx => {
               const v = ctx.p1.parsed.y;
               return v<70
-                ? (dark?"rgba(248,113,113,.9)":"rgba(239,68,68,.8)")
+                ? (dark?"rgba(251,113,133,.95)":"rgba(225,29,72,.85)")   // rose-400/600
                 : v<=180
-                  ? (dark?"rgba(74,222,128,.8)":"rgba(22,163,74,.7)")
-                  : (dark?"rgba(250,204,21,.85)":"rgba(202,138,4,.85)");
+                  ? (dark?"rgba(52,211,153,.90)":"rgba(5,150,105,.80)")  // emerald-400/600
+                  : (dark?"rgba(251,191,36,.90)":"rgba(180,83,9,.85)");  // amber-400/700
             }
           }
         }
