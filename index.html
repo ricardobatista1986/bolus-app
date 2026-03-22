@@ -3369,9 +3369,9 @@ function ThemeToggle({dark,onToggle}) {
       style={{background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"20px",
         padding:"6px 10px",color:"var(--text2)",fontSize:"12px",cursor:"pointer",fontFamily:"var(--font)",
         fontWeight:500,display:"flex",alignItems:"center",gap:"5px",
-        minHeight:"36px",touchAction:"manipulation",letterSpacing:"0"}}>
+        minHeight:"36px",minWidth:"84px",touchAction:"manipulation",letterSpacing:"0"}}>
       {dark ? <IcoSun s={15} c="var(--text2)"/> : <IcoMoon s={15} c="var(--text2)"/>}
-      <span>{dark ? "Claro" : "Escuro"}</span>
+      <span style={{minWidth:"38px"}}>{dark ? "Claro" : "Escuro"}</span>
     </button>
   );
 }
@@ -4090,7 +4090,7 @@ COB adicionado ao modelo. Previsões atualizadas.`,
           </div>
           <div style={{flex:1,minWidth:0,overflow:"hidden"}}>
             <div style={{fontWeight:800,fontSize:"14px",color:"var(--text)",letterSpacing:"-0.02em",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>DM1</div>
-            <div style={{fontSize:"10px",color:"var(--text3)",fontWeight:500,letterSpacing:"0.04em",whiteSpace:"nowrap"}}>T1 · Libre 2 · Fiasp</div>
+            <div style={{fontSize:"10px",color:"var(--text3)",fontWeight:500,letterSpacing:"0.04em",whiteSpace:"nowrap"}}>Libre 2</div>
           </div>
           <button onClick={()=>setTab(t=>t==="library"?"chart":"library")} aria-label="Biblioteca de Alimentos"
             style={{display:"flex",alignItems:"center",gap:"5px",padding:"6px 10px",
