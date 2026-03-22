@@ -1086,7 +1086,7 @@ function GlucoseWidget({reading, loading, onRefresh, activeDoses, tirStats, pred
   if(!reading||reading.error) return (
     <div className="card" style={{margin:"10px 14px 0",padding:"12px 16px",display:"flex",alignItems:"center",gap:"10px",background:"rgba(239,68,68,.06)",borderColor:"rgba(239,68,68,.2)",cursor:"pointer"}} onClick={onRefresh}>
       <span>⚠️</span>
-      <span style={{fontSize:"12px",color:"#ef4444",flex:1}}>{reading?.error?.includes("Proxy")||reading?.error?.includes("fetch")?"Proxy offline":reading?.error||"Sensor desconectado"}</span>
+      <span style={{fontSize:"12px",color:"var(--red)",flex:1}}>{reading?.error?.includes("Proxy")||reading?.error?.includes("fetch")?"Proxy offline":reading?.error||"Sensor desconectado"}</span>
       {totalIOB>0&&<div style={{fontSize:"12px",fontWeight:700,color:"var(--accent)"}}>💉 {totalIOB}U IOB</div>}
       <span style={{fontSize:"11px",color:"var(--accent)"}}>↺</span>
     </div>
@@ -1152,7 +1152,7 @@ function GlucoseWidget({reading, loading, onRefresh, activeDoses, tirStats, pred
                 fontFamily="'DM Mono',monospace" letterSpacing="-2">{g}</text>
               <text x={CX} y={CY+11} textAnchor="middle"
                 fontSize="9.5" fill={dark?"rgba(255,248,240,.40)":"rgba(120,100,80,.55)"}
-                fontFamily="'Outfit',sans-serif" fontWeight="600" letterSpacing="0.5">mg/dL</text>
+                fontFamily="'Manrope',sans-serif" fontWeight="600" letterSpacing="0.5">mg/dL</text>
               <ArrowSVG cx={CX} cy={CY+28} color={zone.color} rot={deg}/>
             </svg>
             {hasTIR && (
@@ -1160,7 +1160,7 @@ function GlucoseWidget({reading, loading, onRefresh, activeDoses, tirStats, pred
                 background:"var(--surface)",border:`1.5px solid ${tirColor(tir)}`,borderRadius:"20px",
                 padding:"1px 8px",whiteSpace:"nowrap",boxShadow:"var(--shadow-sm)"}}>
                 <span style={{fontSize:"10px",fontWeight:700,color:tirColor(tir),fontFamily:"var(--mono)",letterSpacing:"-0.02em"}}>{tir}%</span>
-                <span style={{fontSize:"9px",color:"var(--text3)",marginLeft:"3px",fontWeight:500}}>TIR 8h</span>
+                <span style={{fontSize:"10px",color:"var(--text3)",marginLeft:"3px",fontWeight:500}}>TIR 8h</span>
               </div>
             )}
           </div>
@@ -1182,10 +1182,10 @@ function GlucoseWidget({reading, loading, onRefresh, activeDoses, tirStats, pred
                 </div>
                 {totalCarbs>0 && (
                   <div style={{marginTop:"4px"}}>
-                    <div style={{fontSize:"11px",fontWeight:600,color:"#16a34a",display:"flex",alignItems:"center",gap:"3px"}}>
+                    <div style={{fontSize:"11px",fontWeight:600,color:"var(--green)",display:"flex",alignItems:"center",gap:"3px"}}>
                       <IcoUtensils s={11} c="#16a34a"/>{totalCarbs}g
                     </div>
-                    <div style={{fontSize:"9px",color:"var(--text3)"}}>{carbRemStr()} restante</div>
+                    <div style={{fontSize:"10px",color:"var(--text3)"}}>{carbRemStr()} restante</div>
                   </div>
                 )}
               </>);
@@ -1193,17 +1193,17 @@ function GlucoseWidget({reading, loading, onRefresh, activeDoses, tirStats, pred
               <div style={{fontSize:"10px",color:"var(--text3)"}}>Sem IOB</div>
               {totalCarbs>0 && (
                 <div style={{marginTop:"4px"}}>
-                  <div style={{fontSize:"11px",fontWeight:600,color:"#16a34a",display:"flex",alignItems:"center",gap:"3px"}}>
+                  <div style={{fontSize:"11px",fontWeight:600,color:"var(--green)",display:"flex",alignItems:"center",gap:"3px"}}>
                     <IcoUtensils s={11} c="#16a34a"/>{totalCarbs}g
                   </div>
-                  <div style={{fontSize:"9px",color:"var(--text3)"}}>{carbRemStr()} restante</div>
+                  <div style={{fontSize:"10px",color:"var(--text3)"}}>{carbRemStr()} restante</div>
                 </div>
               )}
             </>)}
           </div>
         </div>
 
-        <div style={{textAlign:"center",fontSize:"9px",color:"var(--text3)",marginTop:"6px",opacity:.45,display:"flex",alignItems:"center",justifyContent:"center",gap:"4px"}}>
+        <div style={{textAlign:"center",fontSize:"10px",color:"var(--text3)",marginTop:"6px",opacity:.55,display:"flex",alignItems:"center",justifyContent:"center",gap:"4px"}}>
           <IcoRefresh s={11} c="var(--text3)"/> toque para atualizar
         </div>
 
@@ -1231,7 +1231,7 @@ function GlucoseWidget({reading, loading, onRefresh, activeDoses, tirStats, pred
                 </div>
               )}
               <div style={{display:"flex",alignItems:"center",gap:"6px"}}>
-                <div style={{fontSize:"9px",fontWeight:700,color:purpleColor,whiteSpace:"nowrap",flexShrink:0}}>
+                <div style={{fontSize:"10px",fontWeight:700,color:purpleColor,whiteSpace:"nowrap",flexShrink:0}}>
                   Previsão:
                 </div>
                 <div style={{display:"flex",flex:1,gap:"4px"}}>
@@ -1255,7 +1255,7 @@ function GlucoseWidget({reading, loading, onRefresh, activeDoses, tirStats, pred
                       border: badgeBorder,
                       borderRadius:"8px",padding:"4px 2px"
                     }}>
-                      <div style={{fontSize:"9px",color:dark?"rgba(255,248,240,.48)":"rgba(0,0,0,.38)",lineHeight:1.3,fontFamily:"var(--mono)"}}>+{p.t}m</div>
+                      <div style={{fontSize:"10px",color:dark?"rgba(255,248,240,.48)":"rgba(0,0,0,.38)",lineHeight:1.3,fontFamily:"var(--mono)"}}>+{p.t}m</div>
                       <div style={{fontSize:"15px",fontWeight:800,color:badgeText,fontFamily:"var(--mono)",lineHeight:1.1}}>{p.value}</div>
                     </div>
                     );
@@ -1398,7 +1398,7 @@ function AlertQueue({reading, predictions, history, activeDoses, dismissed, onDi
         <div style={{...alertWrap(dark?"#3b0000":"#fef2f2", dark?"rgba(239,68,68,.5)":"rgba(239,68,68,.3)"),
           display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:"8px"}}>
           <div style={{flex:1}}>
-            <div style={{fontSize:"13px",fontWeight:800,color:"#ef4444",marginBottom:"2px"}}>
+            <div style={{fontSize:"13px",fontWeight:800,color:"var(--red)",marginBottom:"2px"}}>
               🚨 Hipoglicemia — {g} mg/dL
             </div>
             <div style={{fontSize:"11px",color:dark?"rgba(255,100,100,.9)":"#991b1b",lineHeight:1.4}}>
@@ -1432,7 +1432,7 @@ function AlertQueue({reading, predictions, history, activeDoses, dismissed, onDi
         <div style={{...alertWrap(dark?"#200808":"#fff1f2",dark?"rgba(239,68,68,.35)":"rgba(239,68,68,.2)"),
           display:"flex",alignItems:"center",justifyContent:"space-between",gap:"8px"}}>
           <div style={{flex:1,minWidth:0}}>
-            <div style={{fontSize:"11px",fontWeight:700,color:"#ef4444"}}>
+            <div style={{fontSize:"11px",fontWeight:700,color:"var(--red)"}}>
               🌙 Alerta noturno — hipo prevista em {predictions.find(p=>p.t>=60&&p.value<70)?.t}min
             </div>
             <div style={{fontSize:"10px",color:dark?"rgba(255,120,120,.7)":"#991b1b",marginTop:"1px"}}>
@@ -1448,7 +1448,7 @@ function AlertQueue({reading, predictions, history, activeDoses, dismissed, onDi
         <div style={{...alertWrap(dark?"#1a1200":"#fefce8",dark?"rgba(202,138,4,.4)":"rgba(202,138,4,.25)"),
           display:"flex",alignItems:"center",justifyContent:"space-between",gap:"8px"}}>
           <div style={{flex:1,minWidth:0}}>
-            <div style={{fontSize:"11px",fontWeight:700,color:"#ca8a04"}}>💊 Correção pós-refeição</div>
+            <div style={{fontSize:"11px",fontWeight:700,color:"var(--amber)"}}>💊 Correção pós-refeição</div>
             <div style={{fontSize:"10px",color:dark?"rgba(255,200,50,.65)":"#92400e",marginTop:"1px"}}>
               {g} mg/dL · alvo {corrTarget} · {minsPostDose}min pós dose
             </div>
@@ -1456,11 +1456,11 @@ function AlertQueue({reading, predictions, history, activeDoses, dismissed, onDi
           <div style={{display:"flex",alignItems:"center",gap:"8px",flexShrink:0}}>
             {corrDose > 0 && (
               <div style={{background:"rgba(202,138,4,.2)",border:"1px solid rgba(202,138,4,.45)",borderRadius:"8px",padding:"3px 9px",textAlign:"center"}}>
-                <div style={{fontSize:"15px",fontWeight:800,color:"#ca8a04",fontFamily:"var(--mono)",lineHeight:1}}>{corrDose}U</div>
-                <div style={{fontSize:"9px",color:"#92400e"}}>sugerido</div>
+                <div style={{fontSize:"15px",fontWeight:800,color:"var(--amber)",fontFamily:"var(--mono)",lineHeight:1}}>{corrDose}U</div>
+                <div style={{fontSize:"10px",color:"#92400e"}}>sugerido</div>
               </div>
             )}
-            {corrDose === 0 && <div style={{fontSize:"10px",color:"#ca8a04"}}>IOB suficiente</div>}
+            {corrDose === 0 && <div style={{fontSize:"10px",color:"var(--amber)"}}>IOB suficiente</div>}
             {closeBtn("#ca8a04","postMeal",true)}
           </div>
         </div>
@@ -1471,7 +1471,7 @@ function AlertQueue({reading, predictions, history, activeDoses, dismissed, onDi
         <div style={{...alertWrap(dark?"#1a1400":"#fefce8",dark?"rgba(202,138,4,.35)":"rgba(202,138,4,.2)")}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:"8px"}}>
             <div style={{flex:1,minWidth:0}}>
-              <div style={{fontSize:"11px",fontWeight:700,color:"#ca8a04"}}>🍽️ Glicemia subindo sem carbos</div>
+              <div style={{fontSize:"11px",fontWeight:700,color:"var(--amber)"}}>🍽️ Glicemia subindo sem carbos</div>
               <div style={{fontSize:"10px",color:dark?"rgba(255,200,50,.65)":"#92400e",marginTop:"1px"}}>
                 +{vel} mg/dL/min — você comeu algo sem registrar?
               </div>
@@ -1480,7 +1480,7 @@ function AlertQueue({reading, predictions, history, activeDoses, dismissed, onDi
               {!fmShow && (
                 <button onClick={()=>setFmShow(true)}
                   style={{background:"rgba(202,138,4,.2)",border:"1px solid rgba(202,138,4,.5)",borderRadius:"7px",
-                    padding:"4px 12px",fontSize:"11px",fontWeight:700,color:"#ca8a04",cursor:"pointer",
+                    padding:"4px 12px",fontSize:"11px",fontWeight:700,color:"var(--amber)",cursor:"pointer",
                     fontFamily:"var(--font)",minHeight:"32px",touchAction:"manipulation"}}>
                   Registrar
                 </button>
@@ -1521,7 +1521,7 @@ function AlertQueue({reading, predictions, history, activeDoses, dismissed, onDi
               </div>
               <button onClick={submitForgotten}
                 style={{width:"100%",padding:"8px",borderRadius:"8px",background:"rgba(202,138,4,.25)",
-                  border:"1px solid rgba(202,138,4,.5)",color:"#ca8a04",fontWeight:700,fontSize:"12px",
+                  border:"1px solid rgba(202,138,4,.5)",color:"var(--amber)",fontWeight:700,fontSize:"12px",
                   cursor:"pointer",fontFamily:"var(--font)",minHeight:"40px"}}>
                 <IcoCheck s={13} c="#ca8a04" style={{display:"inline",marginRight:"5px"}}/>
                 Registrar refeição retroativa
@@ -1547,8 +1547,8 @@ function PostMealTimer({timers,onDismiss}) {
           <div key={t.id} className="card" style={{padding:"10px 14px",background:done?"rgba(22,163,74,.06)":"rgba(234,179,8,.06)",borderColor:done?"rgba(22,163,74,.25)":"rgba(234,179,8,.25)",display:"flex",alignItems:"center",gap:"8px",marginBottom:"6px"}}>
             <span style={{fontSize:"16px"}}>{done?"⏰":"⏳"}</span>
             <div style={{flex:1,fontSize:"12px"}}>
-              {done?<><strong style={{color:"#16a34a"}}>Hora do check!</strong> Passou 1h30 da dose das {fmtTime(new Date(t.startedAt))}.</>
-                   :<><strong style={{color:"#ca8a04"}}>Check pós-refeição</strong> em {rem}min</>}
+              {done?<><strong style={{color:"var(--green)"}}>Hora do check!</strong> Passou 1h30 da dose das {fmtTime(new Date(t.startedAt))}.</>
+                   :<><strong style={{color:"var(--amber)"}}>Check pós-refeição</strong> em {rem}min</>}
             </div>
             <button onClick={()=>onDismiss(t.id)} className="btn btn-ghost" style={{padding:"4px 10px",fontSize:"11px"}}>OK</button>
           </div>
@@ -1586,7 +1586,7 @@ function DoseWidget({suggested, pendingCarbs, onApply, onSkip, onUpdateCarbs, to
   );
 
   if(done!==null) return done>0
-    ? <div className="card" style={{marginTop:"10px",padding:"10px 14px",background:"rgba(22,163,74,.08)",borderColor:"rgba(22,163,74,.3)",color:"#16a34a",fontSize:"12px",fontWeight:600}}>✅ {done}U registrada às {fmtTime()}</div>
+    ? <div className="card" style={{marginTop:"10px",padding:"10px 14px",background:"rgba(22,163,74,.08)",borderColor:"rgba(22,163,74,.3)",color:"var(--green)",fontSize:"12px",fontWeight:600}}>✅ {done}U registrada às {fmtTime()}</div>
     : <div className="card" style={{marginTop:"10px",padding:"10px 14px",color:"var(--text3)",fontSize:"12px"}}>⏭️ Dose não registrada</div>;
 
   // S2: warning de empilhamento — IOB > 2U
@@ -1601,7 +1601,7 @@ function DoseWidget({suggested, pendingCarbs, onApply, onSkip, onUpdateCarbs, to
           background:dark?"rgba(239,68,68,.12)":"rgba(254,226,226,.8)",
           border:"1px solid rgba(239,68,68,.35)",
           borderRadius:"8px",padding:"8px 10px",marginBottom:"10px",
-          fontSize:"11px",color:"#ef4444",lineHeight:1.4
+          fontSize:"11px",color:"var(--red)",lineHeight:1.4
         }}>
           ⚠️ <strong>IOB alto: {totalIOB}U ativos.</strong>{" "}
           {pred60 ? `Previsão +60min: ${pred60} mg/dL.` : ""}{" "}
@@ -1612,7 +1612,7 @@ function DoseWidget({suggested, pendingCarbs, onApply, onSkip, onUpdateCarbs, to
       {phase==="ask" && <>
         <p style={{fontSize:"12px",color:"var(--text2)",marginBottom:"12px"}}>
           {suggested === 0
-            ? <span style={{color:"#ca8a04",fontWeight:700}}>⚠️ Não aplicar insulina — registrar apenas a refeição</span>
+            ? <span style={{color:"var(--amber)",fontWeight:700}}>⚠️ Não aplicar insulina — registrar apenas a refeição</span>
             : <><span>💉 Dose sugerida: </span><strong style={{color:"var(--text)",fontSize:"18px",fontFamily:"var(--mono)"}}>{suggested}U</strong></>
           }
           {/* U5: carbos como chip editável inline (sempre visível) */}
@@ -1908,7 +1908,7 @@ function LibraryView({library,onUse,onDelete}) {
             </div>
             <div style={{fontSize:"16px",fontWeight:800,color:"var(--accent)",fontFamily:"var(--mono)",flexShrink:0}}>{item.carbs}g</div>
             <button className="btn btn-ghost" onClick={()=>onUse(item)} style={{fontSize:"11px",padding:"5px 12px"}}>Usar</button>
-            <button onClick={()=>onDelete(i)} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:"16px",padding:"4px",opacity:.5}}>✕</button>
+            <button onClick={()=>onDelete(i)} style={{background:"none",border:"none",color:"var(--red)",cursor:"pointer",fontSize:"16px",padding:"4px",opacity:.5}}>✕</button>
           </div>
         ))}
       </div>
@@ -2045,7 +2045,7 @@ function GlucoseChart({glucoseData, history, activeDoses, onRowsUpdate}) {
         };
         */
 
-        ctx.font = "bold 11px Outfit, sans-serif";
+        ctx.font = "bold 11px Manrope, sans-serif";
         ctx.textAlign = "center";
         if(totalDose > 0) {
           ctx.fillStyle = dark ? "rgba(45,212,191,.9)" : "rgba(15,118,110,.9)";
@@ -3168,7 +3168,7 @@ function SettingsModal({open, onClose}) {
                 {icrInput(newRange.icr, v=>setNewRange(r=>({...r,icr:v})))}
                 <span style={{fontSize:"12px",color:"var(--text2)"}}>g CHO</span>
               </div>
-              {addErr && <div style={{fontSize:"11px",color:"#ef4444",marginBottom:"8px",fontWeight:600}}>{addErr}</div>}
+              {addErr && <div style={{fontSize:"11px",color:"var(--red)",marginBottom:"8px",fontWeight:600}}>{addErr}</div>}
               <div style={{display:"flex",gap:"8px"}}>
                 <button onClick={()=>{setAdding(false);setAddErr("");}} className="btn btn-ghost"
                   style={{flex:1,padding:"10px",fontSize:"13px",touchAction:"manipulation"}}>
@@ -3326,7 +3326,7 @@ function FAB({onRegisterDose, totalIOB, pred60, open, onClose}) {
         padding:"16px",width:"240px",zIndex:200,boxShadow:"var(--shadow-md)",animation:"fadeIn .18s ease"}}>
         {stackingRisk && (
           <div style={{background:dark?"rgba(239,68,68,.12)":"rgba(254,226,226,.8)",border:"1px solid rgba(239,68,68,.35)",
-            borderRadius:"8px",padding:"8px 10px",marginBottom:"12px",fontSize:"11px",color:"#ef4444",lineHeight:1.4}}>
+            borderRadius:"8px",padding:"8px 10px",marginBottom:"12px",fontSize:"11px",color:"var(--red)",lineHeight:1.4}}>
             ⚠️ <strong>IOB alto: {totalIOB}U</strong>{pred60?` · +60min: ${pred60} mg/dL`:""}<br/>
             <span style={{opacity:.8}}>Confirme se nova dose é necessária.</span>
           </div>
@@ -3362,7 +3362,7 @@ function ThemeToggle({dark,onToggle}) {
       style={{background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"20px",
         padding:"6px 10px",color:"var(--text2)",fontSize:"12px",cursor:"pointer",fontFamily:"var(--font)",
         fontWeight:500,display:"flex",alignItems:"center",gap:"5px",
-        minHeight:"36px",touchAction:"manipulation",letterSpacing:"-0.01em"}}>
+        minHeight:"36px",touchAction:"manipulation",letterSpacing:"0"}}>
       {dark ? <IcoSun s={15} c="var(--text2)"/> : <IcoMoon s={15} c="var(--text2)"/>}
       <span>{dark ? "Claro" : "Escuro"}</span>
     </button>
@@ -4083,13 +4083,13 @@ COB adicionado ao modelo. Previsões atualizadas.`,
           </div>
           <div style={{flex:1,minWidth:0,overflow:"hidden"}}>
             <div style={{fontWeight:800,fontSize:"14px",color:"var(--text)",letterSpacing:"-0.02em",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>DM1</div>
-            <div style={{fontSize:"9px",color:"var(--text3)",fontWeight:500,letterSpacing:"0.03em",whiteSpace:"nowrap"}}>T1 · Libre 2 · Fiasp</div>
+            <div style={{fontSize:"10px",color:"var(--text3)",fontWeight:500,letterSpacing:"0.03em",whiteSpace:"nowrap"}}>T1 · Libre 2 · Fiasp</div>
           </div>
           <button onClick={()=>setTab(t=>t==="library"?"chart":"library")} aria-label="Biblioteca de Alimentos"
             style={{display:"flex",alignItems:"center",gap:"5px",padding:"6px 10px",
               background:tab==="library"?"var(--accent)":"var(--surface2)",
               border:`1px solid ${tab==="library"?"var(--accent)":"var(--border)"}`,
-              borderRadius:"8px",color:tab==="library"?"white":"var(--text2)",
+              borderRadius:"20px",color:tab==="library"?"white":"var(--text2)",
               fontSize:"11px",fontWeight:600,cursor:"pointer",fontFamily:"var(--font)",flexShrink:0,
               minHeight:"36px",touchAction:"manipulation"}}>
             <IcoBook s={14} c={tab==="library"?"white":"var(--text2)"}/>
