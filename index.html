@@ -28,9 +28,9 @@
       --accent:     #0d9488;             /* teal-600 — saúde, calma, foco */
       --accent2:    #0f766e;             /* teal-700 — hover/ativo */
       --accent-muted: rgba(13,148,136,.10);
-      --green:      #16a34a;
+      --green:      #059669;  /* emerald-600 — muted médico */
       --amber:      #b45309;
-      --red:        #dc2626;
+      --red:        #e11d48;  /* rose-600 — clínico, menos alarme */
       --orange:     #ea580c;             /* laranja-600: ação de confirmação intensa */
       --radius:     16px;
       --radius-sm:  10px;
@@ -55,9 +55,9 @@
       --accent:     #2dd4bf;              /* teal-400: accent único, limpo */
       --accent2:    #14b8a6;              /* teal-500: hover */
       --accent-muted: rgba(45,212,191,.10);
-      --green:      #4ade80;
+      --green:      #34d399;  /* emerald-400 dark */
       --amber:      #fbbf24;
-      --red:        #f87171;
+      --red:        #fb7185;  /* rose-400 dark */
       --orange:     #fb923c;             /* laranja-400 dark */
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1068,7 +1068,7 @@ function GlucoseWidget({reading, loading, onRefresh, activeDoses, tirStats, pred
   const tbr = tirStats?.tbr ?? 0;
   const tar = tirStats?.tar ?? 0;
   const hasTIR = tirStats !== null;
-  const tirColor = t => t>=70?"#16a34a":t>=50?"#ca8a04":"#ef4444";
+  const tirColor = t => t>=70?"var(--green)":t>=50?"var(--amber)":"var(--red)";
 
   const trendToDeg = emoji => {
     const m = {"⬆️":0,"↑":0,"↗️":45,"➡️":90,"→":90,"↘️":135,"⬇️":180,"↓":180};
@@ -1136,10 +1136,10 @@ function GlucoseWidget({reading, loading, onRefresh, activeDoses, tirStats, pred
               <circle cx={CX} cy={CY} r={R} fill="none"
                 stroke={dark?"rgba(255,255,255,.13)":"rgba(0,0,0,.07)"} strokeWidth={SW}/>
               {hasTIR && tir+tbr+tar>0 ? (<>
-                {tbr>0&&<circle cx={CX} cy={CY} r={R} fill="none" stroke="#ef4444" strokeWidth={SW} strokeLinecap="butt"
+                {tbr>0&&<circle cx={CX} cy={CY} r={R} fill="none" stroke="var(--red)" strokeWidth={SW} strokeLinecap="butt"
                   strokeDasharray={`${tbr/100*C} ${C}`} strokeDashoffset={0}
                   transform={`rotate(-90 ${CX} ${CY})`}/>}
-                {tir>0&&<circle cx={CX} cy={CY} r={R} fill="none" stroke="#16a34a" strokeWidth={SW} strokeLinecap="butt"
+                {tir>0&&<circle cx={CX} cy={CY} r={R} fill="none" stroke="#059669" strokeWidth={SW} strokeLinecap="butt"
                   strokeDasharray={`${tir/100*C} ${C}`} strokeDashoffset={`${-(tbr/100*C)}`}
                   transform={`rotate(-90 ${CX} ${CY})`}/>}
                 {tar>0&&<circle cx={CX} cy={CY} r={R} fill="none" stroke="#ca8a04" strokeWidth={SW} strokeLinecap="butt"
@@ -1186,7 +1186,7 @@ function GlucoseWidget({reading, loading, onRefresh, activeDoses, tirStats, pred
                 {totalCarbs>0 && (
                   <div style={{marginTop:"4px"}}>
                     <div style={{fontSize:"11px",fontWeight:600,color:"var(--green)",display:"flex",alignItems:"center",gap:"3px"}}>
-                      <IcoUtensils s={11} c="#16a34a"/>{totalCarbs}g
+                      <IcoUtensils s={11} c="var(--green)"/>{totalCarbs}g
                     </div>
                     <div style={{fontSize:"10px",color:"var(--text3)"}}>{carbRemStr()} restante</div>
                   </div>
@@ -1197,7 +1197,7 @@ function GlucoseWidget({reading, loading, onRefresh, activeDoses, tirStats, pred
               {totalCarbs>0 && (
                 <div style={{marginTop:"4px"}}>
                   <div style={{fontSize:"11px",fontWeight:600,color:"var(--green)",display:"flex",alignItems:"center",gap:"3px"}}>
-                    <IcoUtensils s={11} c="#16a34a"/>{totalCarbs}g
+                    <IcoUtensils s={11} c="var(--green)"/>{totalCarbs}g
                   </div>
                   <div style={{fontSize:"10px",color:"var(--text3)"}}>{carbRemStr()} restante</div>
                 </div>
@@ -1226,7 +1226,7 @@ function GlucoseWidget({reading, loading, onRefresh, activeDoses, tirStats, pred
                   border:`1px solid ${hypoAlert?"rgba(239,68,68,.4)":"rgba(202,138,4,.3)"}`,
                   borderRadius:"8px",padding:"4px 10px",marginBottom:"6px",
                   fontSize:"11px",fontWeight:700,
-                  color:hypoAlert?"#ef4444":"#ca8a04",textAlign:"center"
+                  color:hypoAlert?"var(--red)":"var(--amber)",textAlign:"center"
                 }}>
                   {hypoAlert
                     ? "⚠️ Hipo prevista em ~"+predictions.find(p=>p.value<70)?.t+"min"
@@ -1241,7 +1241,7 @@ function GlucoseWidget({reading, loading, onRefresh, activeDoses, tirStats, pred
                   {[p30,p60,p90].filter(Boolean).map(p=>{
                     // Amber (#ca8a04) sobre fundo amarelado falha WCAG no light mode.
                     // Solução: fundo neutro (surface) + borda colorida + texto escuro/contrastado.
-                    const isAmber = p.zone.color==="#ca8a04";
+                    const isAmber = p.zone.color==="var(--amber)";
                     const badgeText = dark
                       ? p.zone.color
                       : isAmber ? "#6b3f00" : p.zone.color; // âmbar escuro no light — ~5.2:1
@@ -1409,7 +1409,7 @@ function AlertQueue({reading, predictions, history, activeDoses, dismissed, onDi
               <span style={{opacity:.8}}>Ex: 150ml suco · 3 balas · 1 col. açúcar. Checar em 15min.</span>
             </div>
           </div>
-          {closeBtn("#ef4444","hypo")}
+          {closeBtn("var(--red)","hypo")}
         </div>
       )}
 
@@ -1421,12 +1421,12 @@ function AlertQueue({reading, predictions, history, activeDoses, dismissed, onDi
         ), display:"flex",alignItems:"center",gap:"8px"}}>
           <span style={{fontSize:"16px"}}>{vel > 0 ? "📈" : "📉"}</span>
           <div style={{flex:1}}>
-            <span style={{fontSize:"12px",fontWeight:700,color: vel > 0 ? "#ca8a04" : "#ef4444"}}>
+            <span style={{fontSize:"12px",fontWeight:700,color: vel > 0 ? "var(--amber)" : "var(--red)"}}>
               Variação rápida: {vel > 0 ? "+" : ""}{vel} mg/dL/min
             </span>
             <span style={{fontSize:"10px",color:"var(--text3)",marginLeft:"6px"}}>acompanhe de perto</span>
           </div>
-          {closeBtn(vel > 0 ? "#ca8a04" : "#ef4444","rapid")}
+          {closeBtn(vel > 0 ? "var(--amber)" : "var(--red)","rapid")}
         </div>
       )}
 
@@ -1442,7 +1442,7 @@ function AlertQueue({reading, predictions, history, activeDoses, dismissed, onDi
               Considere comer algo leve antes de dormir.
             </div>
           </div>
-          {closeBtn("#ef4444","nightHypo",true)}
+          {closeBtn("var(--red)","nightHypo",true)}
         </div>
       )}
 
@@ -1464,7 +1464,7 @@ function AlertQueue({reading, predictions, history, activeDoses, dismissed, onDi
               </div>
             )}
             {corrDose === 0 && <div style={{fontSize:"10px",color:"var(--amber)"}}>IOB suficiente</div>}
-            {closeBtn("#ca8a04","postMeal",true)}
+            {closeBtn("var(--amber)","postMeal",true)}
           </div>
         </div>
       )}
@@ -1488,7 +1488,7 @@ function AlertQueue({reading, predictions, history, activeDoses, dismissed, onDi
                   Registrar
                 </button>
               )}
-              {closeBtn("#ca8a04","forgottenMeal",true)}
+              {closeBtn("var(--amber)","forgottenMeal",true)}
             </div>
           </div>
           {fmShow && (
@@ -1499,7 +1499,7 @@ function AlertQueue({reading, predictions, history, activeDoses, dismissed, onDi
                     style={{flex:1,padding:"6px 2px",borderRadius:"7px",minHeight:"36px",
                       border:`1px solid ${fmType===key?"rgba(202,138,4,.7)":"rgba(202,138,4,.2)"}`,
                       background:fmType===key?"rgba(202,138,4,.2)":"transparent",
-                      color:fmType===key?"#ca8a04":"#92400e",fontSize:"10px",
+                      color:fmType===key?"var(--amber)":"var(--amber)",fontSize:"10px",
                       fontWeight:fmType===key?700:400,cursor:"pointer",fontFamily:"var(--font)"}}>
                     {emoji} {label}
                   </button>
@@ -1526,7 +1526,7 @@ function AlertQueue({reading, predictions, history, activeDoses, dismissed, onDi
                 style={{width:"100%",padding:"8px",borderRadius:"8px",background:"rgba(202,138,4,.25)",
                   border:"1px solid rgba(202,138,4,.5)",color:"var(--amber)",fontWeight:700,fontSize:"12px",
                   cursor:"pointer",fontFamily:"var(--font)",minHeight:"40px"}}>
-                <IcoCheck s={13} c="#ca8a04" style={{display:"inline",marginRight:"5px"}}/>
+                <IcoCheck s={13} c="var(--amber)" style={{display:"inline",marginRight:"5px"}}/>
                 Registrar refeição retroativa
               </button>
             </div>
@@ -2164,7 +2164,7 @@ function GlucoseChart({glucoseData, history, activeDoses, onRowsUpdate}) {
           pointHoverRadius:4,
           pointHoverBackgroundColor: ctx => {
             const v = ctx.parsed?.y ?? 0;
-            return v<70?"#ef4444":v<=180?"#16a34a":"#ca8a04";
+            return v<70?"var(--red)":v<=180?"var(--green)":"var(--amber)";
           },
           borderWidth:2.5,
           tension:0.5,
@@ -2563,7 +2563,7 @@ function DashboardModal({open, onClose}) {
     const circ = 2*Math.PI*R;
     const gap  = 0.007; // pequeno gap entre segmentos
     const segs = [
-      {pct:tir/100, col:'#22c55e'},
+      {pct:tir/100, col:'#059669'},
       {pct:tar/100, col:'#f97316'},
       {pct:tbr/100, col:'var(--red)'},
     ];
@@ -2667,7 +2667,7 @@ function DashboardModal({open, onClose}) {
                     {/* legenda vertical à direita */}
                     <div style={{display:'flex',flexDirection:'column',gap:8,flex:1}}>
                       {[
-                        {col:'#22c55e',label:'Na faixa',    pct:glStats.tir},
+                        {col:'#059669',label:'Na faixa',    pct:glStats.tir},
                         {col:'#f97316',label:'Acima >180',  pct:glStats.tar},
                         {col:'var(--red)',label:'Abaixo <70', pct:glStats.tbr},
                       ].map(({col,label,pct})=>(
@@ -2778,7 +2778,7 @@ function DashboardModal({open, onClose}) {
                   <svg viewBox={`0 0 ${W} ${H}`} style={{width:'100%',height:'auto',display:'block'}}>
                     {/* Zona alvo 70–180 */}
                     <rect x={PAD.l} y={yT180} width={CW} height={zoneH}
-                      fill="rgba(34,197,94,.10)"/>
+                      fill="rgba(5,150,105,.10)"/>
 
                     {/* Grid Y */}
                     {yTicks.map(v=>(
@@ -2817,9 +2817,9 @@ function DashboardModal({open, onClose}) {
 
                     {/* Linhas limites zona alvo */}
                     <line x1={PAD.l} y1={yOf(70)}  x2={PAD.l+CW} y2={yOf(70)}
-                      stroke="#22c55e" strokeWidth="1" strokeDasharray="4 3" opacity="0.7"/>
+                      stroke="#059669" strokeWidth="1" strokeDasharray="4 3" opacity="0.7"/>
                     <line x1={PAD.l} y1={yOf(180)} x2={PAD.l+CW} y2={yOf(180)}
-                      stroke="#22c55e" strokeWidth="1" strokeDasharray="4 3" opacity="0.7"/>
+                      stroke="#059669" strokeWidth="1" strokeDasharray="4 3" opacity="0.7"/>
                   </svg>
 
                   {/* Legenda */}
@@ -3144,7 +3144,7 @@ function SettingsModal({open, onClose}) {
                     borderRadius:"8px",padding:"7px 10px",cursor:draft.icrRanges.length<=1?"default":"pointer",
                     display:"flex",alignItems:"center",opacity:draft.icrRanges.length<=1?.25:1,
                     touchAction:"manipulation",flexShrink:0}}>
-                  <IcoTrash s={14} c="#ef4444"/>
+                  <IcoTrash s={14} c="var(--red)"/>
                 </button>
               </div>
             </div>
@@ -3221,7 +3221,7 @@ function SettingsModal({open, onClose}) {
                 {/* Barra de outcomes */}
                 <div style={{display:"flex",gap:"2px",height:"8px",borderRadius:"4px",overflow:"hidden",marginBottom:"7px"}}>
                   {r.nAlto  > 0 && <div style={{flex:r.nAlto, background:"#f97316", transition:"flex .4s"}}/>}
-                  {r.nBom   > 0 && <div style={{flex:r.nBom,  background:"#22c55e", transition:"flex .4s"}}/>}
+                  {r.nBom   > 0 && <div style={{flex:r.nBom,  background:"#059669", transition:"flex .4s"}}/>}
                   {r.nBaixo > 0 && <div style={{flex:r.nBaixo,background:"#ef4444", transition:"flex .4s"}}/>}
                 </div>
                 <div style={{display:"flex",gap:"12px",fontSize:"11px",color:"var(--text3)",marginBottom:"6px"}}>
@@ -3234,7 +3234,7 @@ function SettingsModal({open, onClose}) {
                   <div style={{borderRadius:"7px",overflow:"hidden",
                     background:r.nAlto>r.nBaixo?"rgba(249,115,22,.1)":"rgba(239,68,68,.1)"}}>
                     <div style={{display:"flex",alignItems:"center",gap:"8px",padding:"7px 10px"}}>
-                      <span style={{fontSize:"12px",color:r.nAlto>r.nBaixo?"#f97316":"#ef4444",flex:1}}>
+                      <span style={{fontSize:"12px",color:r.nAlto>r.nBaixo?"var(--amber)":"var(--red)",flex:1}}>
                         {r.nAlto>r.nBaixo
                           ? `Glicemia pós-refeição cronicamente alta — dose possivelmente insuficiente`
                           : `Glicemia pós-refeição baixa com frequência — dose possivelmente excessiva`}
@@ -3252,7 +3252,7 @@ function SettingsModal({open, onClose}) {
                       }))}
                       style={{width:"100%",padding:"7px",border:"none",borderTop:"1px solid rgba(0,0,0,.08)",
                         background:r.nAlto>r.nBaixo?"rgba(249,115,22,.15)":"rgba(239,68,68,.15)",
-                        color:r.nAlto>r.nBaixo?"#f97316":"#ef4444",
+                        color:r.nAlto>r.nBaixo?"var(--amber)":"var(--red)",
                         fontSize:"12px",fontWeight:700,cursor:"pointer",
                         fontFamily:"var(--font)",touchAction:"manipulation"}}>
                       Aplicar 1:{Math.round(r.sugestao)} nesta faixa →
@@ -4098,7 +4098,7 @@ COB adicionado ao modelo. Previsões atualizadas.`,
           {!isOnline && (
             <div title="Sem conexão" style={{background:"rgba(239,68,68,.12)",border:"1px solid rgba(239,68,68,.35)",
               borderRadius:"20px",padding:"5px 7px",flexShrink:0,display:"flex",alignItems:"center"}}>
-              <IcoWifiOff s={14} c="#ef4444"/>
+              <IcoWifiOff s={14} c="var(--red)"/>
             </div>
           )}
           <ThemeToggle dark={dark} onToggle={()=>setDark(d=>!d)}/>
