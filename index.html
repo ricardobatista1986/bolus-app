@@ -1351,7 +1351,7 @@ function AlertQueue({reading, predictions, history, activeDoses, dismissed, onDi
         cooldowns.current[nextType] = Date.now();
         setTick(t => t+1);
       }, 150);
-    }, 2000);
+    }, 20000);
   }, [nextType, tick, fmShow, hasReading]);
 
   const dismiss = (type, useParentDismiss=false) => {
@@ -2283,25 +2283,25 @@ function GlucoseChart({glucoseData, history, activeDoses, onRowsUpdate}) {
       )}
 
       {/* Pills de janela — em fluxo acima do canvas */}
-      <div style={{display:show?"flex":"none",gap:"5px",alignItems:"center",justifyContent:"flex-end",marginBottom:"4px",flexShrink:0}}>
+      <div style={{display:show?"flex":"none",gap:"6px",alignItems:"center",justifyContent:"flex-end",padding:"8px 0 6px",flexShrink:0}}>
         <button onClick={()=>setShowMarkers(v=>!v)}
           title={showMarkers?"Ocultar marcações":"Mostrar marcações"}
-          style={{padding:"4px 8px",borderRadius:"20px",border:`1px solid ${showMarkers?"var(--accent)":"var(--border)"}`,background:showMarkers?"var(--accent)":"var(--surface)",color:showMarkers?"white":"var(--text3)",cursor:"pointer",transition:"all .15s",marginRight:"2px",display:"flex",alignItems:"center",justifyContent:"center",minWidth:"30px",minHeight:"26px"}}>
+          style={{padding:"6px 10px",borderRadius:"20px",border:`1px solid ${showMarkers?"var(--accent)":"var(--border)"}`,background:showMarkers?"var(--accent)":"var(--surface)",color:showMarkers?"white":"var(--text3)",cursor:"pointer",transition:"all .15s",marginRight:"2px",display:"flex",alignItems:"center",justifyContent:"center",minWidth:"34px",minHeight:"32px"}}>
             <IcoMarkers s={13} c={showMarkers?"white":"var(--text3)"}/>
           </button>
         {[8,12,24].map(h=>(
           <button key={h} onClick={()=>{setHours(h);load(h);}}
-            style={{padding:"2px 9px",borderRadius:"20px",border:`1px solid ${hours===h?"var(--accent)":"var(--border)"}`,background:hours===h?"var(--accent)":"var(--surface)",color:hours===h?"white":"var(--text2)",fontWeight:700,fontSize:"10px",cursor:"pointer",fontFamily:"var(--font)",transition:"all .15s"}}>
+            style={{padding:"6px 12px",borderRadius:"20px",border:`1px solid ${hours===h?"var(--accent)":"var(--border)"}`,background:hours===h?"var(--accent)":"var(--surface)",color:hours===h?"white":"var(--text2)",fontWeight:700,fontSize:"11px",cursor:"pointer",fontFamily:"var(--font)",transition:"all .15s",minHeight:"32px",display:"flex",alignItems:"center",justifyContent:"center"}}>
             {h}h
           </button>
         ))}
         <button onClick={()=>load()} aria-label="Recarregar gráfico"
-          style={{padding:"4px 8px",borderRadius:"20px",border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text3)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",minWidth:"30px",minHeight:"26px"}}>
+          style={{padding:"6px 10px",borderRadius:"20px",border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text3)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",minWidth:"34px",minHeight:"32px"}}>
           <IcoRefresh s={13} c="var(--text3)"/>
         </button>
       </div>
       {/* Canvas sempre no DOM — mostra/oculta via display */}
-      <div style={{flex:1,position:"relative",minHeight:0,display:show?"block":"none"}}>
+      <div style={{flex:1,position:"relative",minHeight:0,maxHeight:"calc(100% - 52px)",display:show?"block":"none"}}>
         <canvas ref={canvasRef} style={{width:"100%",height:"100%"}}/>
       </div>
       {count!=null&&show&&(
