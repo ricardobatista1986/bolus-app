@@ -1110,7 +1110,7 @@ function GlucoseWidget({reading, loading, onRefresh, activeDoses, tirStats, pred
 
   return (
     /* Wrapper relativo: card tem altura fixa, alertas flutuam em overlay sobre o chart */
-    <div style={{margin:"4px 14px 0", flexShrink:0}} onClick={onRefresh}>
+    <div style={{margin:"4px 14px 0", flexShrink:0, maxHeight:"52vh", overflow:"hidden"}} onClick={onRefresh}>
 
       {/* ── CARD principal — altura nunca muda com alertas ── */}
       <div className="card" style={{
@@ -4137,7 +4137,7 @@ COB adicionado ao modelo. Previsões atualizadas.`,
         />
 
         {/* GLICEMIA + BIBLIOTECA — chart sempre visível, library como overlay */}
-        <div style={{height:"40vh",flexShrink:0,position:"relative",minHeight:0,overflow:"hidden",display:"flex",flexDirection:"column",
+        <div style={{flex:1,position:"relative",minHeight:0,overflow:"hidden",display:"flex",flexDirection:"column",
           paddingBottom:"var(--bar-h)"}}>
           <GlucoseChart glucoseData={glucose} history={history} activeDoses={doses} onRowsUpdate={r=>chartRowsRef.current=r}/>
           {tab==="library" && (
