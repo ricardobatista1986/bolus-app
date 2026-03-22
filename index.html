@@ -2092,7 +2092,7 @@ function GlucoseChart({glucoseData, history, activeDoses, onRowsUpdate}) {
       // 2) Dashed prediction line — solid purple, no gradient
       ctx.save();
       ctx.setLineDash([5,4]);
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 3.0;
       ctx.strokeStyle = dark?"rgba(187,134,252,.75)":"rgba(142,68,173,.65)";
       ctx.lineJoin="round"; ctx.lineCap="round";
       ctx.beginPath();
@@ -2166,7 +2166,7 @@ function GlucoseChart({glucoseData, history, activeDoses, onRowsUpdate}) {
             const v = ctx.parsed?.y ?? 0;
             return v<70?"var(--red)":v<=180?"var(--green)":"var(--amber)";
           },
-          borderWidth:3.5,
+          borderWidth:3.0,
           tension:0.5,
           cubicInterpolationMode:'monotone',
           fill:false,
