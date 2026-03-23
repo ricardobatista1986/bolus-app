@@ -2179,56 +2179,13 @@ function GlucoseChart({glucoseData, history, activeDoses, onRowsUpdate}) {
     const tickColor  = dark ? "rgba(255,255,255,.35)" : "#94a3b8";
     const tooltipBg  = dark ? "rgba(6,26,64,.97)" : "rgba(15,23,42,.95)";
 
-    // ── Glow plugin — linha com bloom suave
-    // ── Glow plugin — afterDatasetsDraw, zona lida de glucoseData.glucose
-    const glowLinePlugin = {
-      id: "glowLine",
-      afterDatasetsDraw(chart) {
-        const {ctx, chartArea:ca} = chart;
-        if(!ca) return;
-        const meta = chart.getDatasetMeta(0);
-        if(!meta?.data?.length) return;
-        // Usa glucoseData.glucose (valor atual real) para cor correta
-        const currV = glucoseData?.glucose ?? 100;
-        const glowCol = currV < 70
-          ? (dark ? "rgba(251,113,133,.38)" : "rgba(225,29,72,.22)")
-          : currV <= 180
-            ? (dark ? "rgba(52,211,153,.32)" : "rgba(5,150,105,.18)")
-            : (dark ? "rgba(251,191,36,.36)" : "rgba(180,83,9,.20)");
-        ctx.save();
-        ctx.beginPath();
-        meta.data.forEach((pt,i) => i===0 ? ctx.moveTo(pt.x,pt.y) : ctx.lineTo(pt.x,pt.y));
-        ctx.strokeStyle = glowCol;
-        ctx.lineWidth = 9;
-        ctx.shadowBlur = 10;
-        ctx.shadowColor = glowCol;
-        ctx.lineJoin = "round"; ctx.lineCap = "round";
-        ctx.stroke();
-        ctx.restore();
-      }
-    };
-
     chartRef.current = new Chart(canvasRef.current.getContext("2d"),{
       type:"line",
       data:{datasets:[
         // Dataset 0 — real glucose (solid, colored by zone)
         {
           data: realPoints,
-          backgroundColor: (ctx) => {
-            const chart = ctx.chart;
-            const {ctx:c, chartArea:ca} = chart;
-            if(!ca) return "transparent";
-            const currV = glucoseData?.glucose ?? 100;
-            const [t,b] = currV < 70
-              ? (dark ? ["rgba(251,113,133,.42)","rgba(251,113,133,.0)"] : ["rgba(225,29,72,.18)","rgba(225,29,72,.0)"])
-              : currV <= 180
-                ? (dark ? ["rgba(52,211,153,.35)","rgba(52,211,153,.0)"] : ["rgba(5,150,105,.14)","rgba(5,150,105,.0)"])
-                : (dark ? ["rgba(251,191,36,.38)","rgba(251,191,36,.0)"] : ["rgba(180,83,9,.14)","rgba(180,83,9,.0)"]);
-            const grad = c.createLinearGradient(0, ca.top, 0, ca.bottom);
-            grad.addColorStop(0, t);
-            grad.addColorStop(1, b);
-            return grad;
-          },
+          backgroundColor:"transparent",
           pointBackgroundColor:"transparent",
           pointRadius:0,
           pointHoverRadius:4,
@@ -2239,7 +2196,7 @@ function GlucoseChart({glucoseData, history, activeDoses, onRowsUpdate}) {
           borderWidth:2.5,
           tension:0.5,
           cubicInterpolationMode:'monotone',
-          fill:'origin',
+          fill:false,
           spanGaps:false,
           segment:{
             borderColor: ctx => {
@@ -2304,7 +2261,7 @@ function GlucoseChart({glucoseData, history, activeDoses, onRowsUpdate}) {
           }
         }
       },
-      plugins:[glowLinePlugin, targetZonePlugin, doseMarkersPlugin, makePredCurvePlugin(predPoints, dark)]
+      plugins:[targetZonePlugin, doseMarkersPlugin, makePredCurvePlugin(predPoints, dark)]
     });
   },[dark, glucoseData, activeDoses]);
 
