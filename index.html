@@ -2179,6 +2179,65 @@ function GlucoseChart({glucoseData, history, activeDoses, onRowsUpdate}) {
     const tickColor  = dark ? "rgba(255,255,255,.35)" : "#94a3b8";
     const tooltipBg  = dark ? "rgba(6,26,64,.97)" : "rgba(15,23,42,.95)";
 
+    // ── Glow plugin — linha com bloom suave
+    const glowLinePlugin = {
+      id: "glowLine",
+      beforeDatasetsDraw(chart) {
+        const {ctx, chartArea:ca} = chart;
+        if(!ca) return;
+        const meta = chart.getDatasetMeta(0);
+        if(!meta?.data?.length) return;
+        const ds = chart.data.datasets[0];
+        const lastV = ds.data[ds.data.length-1]?.y ?? 100;
+        const glowCol = lastV < 70
+          ? (dark ? "rgba(251,113,133,.50)" : "rgba(225,29,72,.35)")
+          : lastV <= 180
+            ? (dark ? "rgba(52,211,153,.45)" : "rgba(5,150,105,.30)")
+            : (dark ? "rgba(251,191,36,.50)" : "rgba(180,83,9,.35)");
+        ctx.save();
+        ctx.beginPath();
+        meta.data.forEach((pt,i) => i===0 ? ctx.moveTo(pt.x,pt.y) : ctx.lineTo(pt.x,pt.y));
+        ctx.strokeStyle = glowCol;
+        ctx.lineWidth = 12;
+        ctx.shadowBlur = 14;
+        ctx.shadowColor = glowCol;
+        ctx.lineJoin = "round"; ctx.lineCap = "round";
+        ctx.stroke();
+        ctx.restore();
+      }
+    };
+
+    // ── Gradient fill plugin — área sob a curva
+    const gradientFillPlugin = {
+      id: "gradientFill",
+      beforeDatasetsDraw(chart) {
+        const {ctx, chartArea:ca} = chart;
+        if(!ca) return;
+        const meta = chart.getDatasetMeta(0);
+        if(!meta?.data?.length) return;
+        const ds = chart.data.datasets[0];
+        const lastV = ds.data[ds.data.length-1]?.y ?? 100;
+        const [cTop, cBot] = lastV < 70
+          ? (dark ? ["rgba(251,113,133,.45)","rgba(251,113,133,.0)"] : ["rgba(225,29,72,.22)","rgba(225,29,72,.0)"])
+          : lastV <= 180
+            ? (dark ? ["rgba(52,211,153,.38)","rgba(52,211,153,.0)"] : ["rgba(5,150,105,.18)","rgba(5,150,105,.0)"])
+            : (dark ? ["rgba(251,191,36,.42)","rgba(251,191,36,.0)"] : ["rgba(180,83,9,.18)","rgba(180,83,9,.0)"]);
+        const topY = Math.min(...meta.data.map(p=>p.y));
+        const grad = ctx.createLinearGradient(0, topY, 0, ca.bottom);
+        grad.addColorStop(0, cTop);
+        grad.addColorStop(1, cBot);
+        ctx.save();
+        ctx.beginPath();
+        meta.data.forEach((pt,i) => i===0 ? ctx.moveTo(pt.x,pt.y) : ctx.lineTo(pt.x,pt.y));
+        ctx.lineTo(meta.data[meta.data.length-1].x, ca.bottom);
+        ctx.lineTo(meta.data[0].x, ca.bottom);
+        ctx.closePath();
+        ctx.fillStyle = grad;
+        ctx.fill();
+        ctx.restore();
+      }
+    };
+
     chartRef.current = new Chart(canvasRef.current.getContext("2d"),{
       type:"line",
       data:{datasets:[
@@ -2261,7 +2320,7 @@ function GlucoseChart({glucoseData, history, activeDoses, onRowsUpdate}) {
           }
         }
       },
-      plugins:[targetZonePlugin, doseMarkersPlugin, makePredCurvePlugin(predPoints, dark)]
+      plugins:[gradientFillPlugin, glowLinePlugin, targetZonePlugin, doseMarkersPlugin, makePredCurvePlugin(predPoints, dark)]
     });
   },[dark, glucoseData, activeDoses]);
 
