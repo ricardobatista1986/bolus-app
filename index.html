@@ -1158,7 +1158,13 @@ function PancriMascot({ glucose }) {
       transformOrigin: '50% 96%',
       userSelect: 'none',
       pointerEvents: 'none',
-      lineHeight: 0
+      lineHeight: 0,
+
+      /* ── NOVOS AJUSTES DE POSIÇÃO ── */
+      position: 'relative',
+      top: '20px',   /* Empurra para baixo (em direção ao 'toque para atualizar') */
+      right: '15px', /* Empurra para a esquerda (afastando da borda direita) */
+      zIndex: 10     /* Garante que ele fique por cima do texto caso se sobreponham */      
     }}>
       <img 
         src={imgSrc} 
