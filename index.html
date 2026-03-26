@@ -135,6 +135,40 @@
       display: flex; flex-direction: column;
       animation: slideUp .28s cubic-bezier(.32,1.2,.56,1);
     }
+    /* ── Pancri animations ─────────────────────────────────────────────── */
+    @keyframes pancri-float {
+      0%,100%{ transform:translateY(0) rotate(0deg); }
+      30%    { transform:translateY(-5px) rotate(.6deg); }
+      70%    { transform:translateY(-2px) rotate(-.4deg); }
+    }
+    @keyframes pancri-wobble-slow {
+      0%,100%{ transform:rotate(0deg); }
+      25%    { transform:rotate(-4deg); }
+      75%    { transform:rotate(4deg); }
+    }
+    @keyframes pancri-shake {
+      0%,100%{ transform:translateX(0) rotate(0deg); }
+      15%    { transform:translateX(-4px) rotate(-3deg); }
+      30%    { transform:translateX(4px) rotate(3deg); }
+      45%    { transform:translateX(-3px) rotate(-2deg); }
+      60%    { transform:translateX(3px) rotate(2deg); }
+      80%    { transform:translateX(-1px) rotate(-1deg); }
+    }
+    @keyframes pancri-shake-hard {
+      0%,100%{ transform:translateX(0); }
+      10%    { transform:translateX(-6px) rotate(-5deg); }
+      20%    { transform:translateX(6px) rotate(5deg); }
+      30%    { transform:translateX(-5px) rotate(-4deg); }
+      40%    { transform:translateX(5px) rotate(4deg); }
+      50%    { transform:translateX(-7px) rotate(-6deg); }
+      60%    { transform:translateX(7px) rotate(6deg); }
+      75%    { transform:translateX(-3px) rotate(-2deg); }
+      90%    { transform:translateX(2px) rotate(1deg); }
+    }
+    @keyframes pancri-pulse {
+      0%,100%{ transform:scale(1); }
+      50%    { transform:scale(1.07); }
+    }
   </style>
 </head>
 <body>
@@ -1066,6 +1100,106 @@ function ApiKeySetup({onSave}) {
 }
 
 /* ── CIRCULAR GLUCOSE WIDGET — compact, side-by-side layout ────────────── */
+/* ── PANCRI — mascote pâncreas tatuado 🥞 ─────────────────────────────── */
+function PancriMascot({ glucose }) {
+  const { dark } = useContext(ThemeCtx);
+  const g = glucose ?? 110;
+  const s = g < 55 ? 'critical' : g < 70 ? 'hypo' : g < 80 ? 'caution' : g <= 180 ? 'ok' : g <= 250 ? 'high' : 'vhigh';
+
+  const animName = { critical:'pancri-shake-hard', hypo:'pancri-shake', caution:'pancri-wobble-slow', ok:'pancri-float', high:'pancri-wobble-slow', vhigh:'pancri-pulse' }[s];
+  const animDur  = { critical:'0.13s', hypo:'0.32s', caution:'3.2s', ok:'3.6s', high:'2.8s', vhigh:'0.9s' }[s];
+
+  // Colors
+  const body = "#F4ADA6"; const shade = "#E89890"; const cap = "#1A1A1E"; const capMid = "#2A2A32";
+  const outline = "#C08878"; const eyeD = "#2A0808"; const blush = "rgba(220,80,80,.20)";
+
+  // Eyes per state
+  const eyeR = { critical:11, hypo:10, caution:8, ok:8.5, high:8, vhigh:7 }[s];
+  const pupR  = { critical:6.5, hypo:6, caution:5, ok:5.5, high:5, vhigh:5 }[s];
+  const pDx   = { critical:0, hypo:0, caution:0, ok:1, high:0, vhigh:0 }[s];
+  const pDy   = { critical:-2, hypo:-1.5, caution:.5, ok:1, high:1, vhigh:.5 }[s];
+
+  const sweat = s==='hypo'||s==='high';
+  const sweat2 = s==='critical';
+
+  return (
+    <div style={{ display:'inline-block', animation:`${animName} ${animDur} ease-in-out infinite`, transformOrigin:'50% 92%', userSelect:'none', pointerEvents:'none', lineHeight:0 }}>
+      <svg viewBox="0 0 86 110" width="68" height="88" style={{overflow:'visible'}}>
+
+        {/* Legs */}
+        <rect x="23" y="92" width="15" height="18" rx="7" fill={body} stroke={outline} strokeWidth=".8"/>
+        <rect x="48" y="92" width="15" height="18" rx="7" fill={body} stroke={outline} strokeWidth=".8"/>
+
+        {/* Left arm — tattooed */}
+        <g transform="rotate(-28 9 66)">
+          <rect x="2" y="56" width="13" height="24" rx="6" fill={body} stroke={outline} strokeWidth=".8"/>
+          {[59,63,67,71].map(y=><line key={y} x1="3" y1={y} x2="14" y2={y} stroke="#7A4030" strokeWidth=".75" opacity=".65"/>)}
+          <line x1="6" y1="57" x2="6" y2="79" stroke="#7A4030" strokeWidth=".5" opacity=".5"/>
+          <line x1="10" y1="56" x2="10" y2="80" stroke="#7A4030" strokeWidth=".5" opacity=".5"/>
+          <path d="M5,64 Q8,61 11,64" fill="none" stroke="#7A4030" strokeWidth=".6" opacity=".5"/>
+          <path d="M4,69 Q8,72 12,69" fill="none" stroke="#7A4030" strokeWidth=".6" opacity=".5"/>
+        </g>
+
+        {/* Right arm */}
+        <g transform="rotate(28 77 66)">
+          <rect x="71" y="56" width="13" height="24" rx="6" fill={body} stroke={outline} strokeWidth=".8"/>
+        </g>
+
+        {/* Body */}
+        <path d="M43,88 C20,88 6,73 6,55 C6,35 21,14 43,14 C65,14 80,33 80,53 C80,73 66,88 43,88 Z"
+          fill={body} stroke={outline} strokeWidth="1"/>
+        {/* Highlight */}
+        <ellipse cx="29" cy="34" rx="11" ry="7" fill="rgba(255,255,255,.20)" transform="rotate(-22 29 34)"/>
+
+        {/* Cap brim */}
+        <path d="M14,42 Q43,37 72,42 L68,48 Q43,43 18,48 Z" fill={cap}/>
+        {/* Cap crown */}
+        <path d="M20,42 C20,24 30,12 43,12 C56,12 66,24 66,42 Z" fill={capMid}/>
+        <path d="M26,42 C26,27 33,17 43,17 C53,17 60,27 60,42 Z" fill={cap}/>
+        {/* Cap button */}
+        <circle cx="43" cy="13" r="3.5" fill={capMid}/>
+        {/* Botafogo star */}
+        <text x="43" y="36" textAnchor="middle" fontSize="11" fill="rgba(255,255,255,.88)" fontWeight="bold" fontFamily="serif">★</text>
+
+        {/* Blush */}
+        <ellipse cx="19" cy="64" rx="8" ry="5" fill={blush}/>
+        <ellipse cx="67" cy="64" rx="8" ry="5" fill={blush}/>
+
+        {/* Eyes */}
+        <circle cx="30" cy="54" r={eyeR} fill="white" stroke={outline} strokeWidth=".5"/>
+        <circle cx="56" cy="54" r={eyeR} fill="white" stroke={outline} strokeWidth=".5"/>
+        <circle cx={30+pDx} cy={54+pDy} r={pupR} fill={eyeD}/>
+        <circle cx={56+pDx} cy={54+pDy} r={pupR} fill={eyeD}/>
+        <circle cx={32+pDx} cy={51+pDy} r="2" fill="white"/>
+        <circle cx={58+pDx} cy={51+pDy} r="2" fill="white"/>
+
+        {/* Eyebrows */}
+        {s==='ok' && <><path d="M23,42 Q28,40 33,42" fill="none" stroke={eyeD} strokeWidth="2.2" strokeLinecap="round"/><path d="M53,42 Q58,40 63,42" fill="none" stroke={eyeD} strokeWidth="2.2" strokeLinecap="round"/></>}
+        {s==='caution' && <><path d="M23,42 Q28,40 33,42" fill="none" stroke={eyeD} strokeWidth="2" strokeLinecap="round"/><path d="M53,42 Q58,40 63,42" fill="none" stroke={eyeD} strokeWidth="2" strokeLinecap="round"/></>}
+        {s==='high' && <><path d="M23,41 Q27,45 33,42" fill="none" stroke={eyeD} strokeWidth="2.5" strokeLinecap="round"/><path d="M53,42 Q59,45 63,41" fill="none" stroke={eyeD} strokeWidth="2.5" strokeLinecap="round"/></>}
+        {s==='vhigh' && <><path d="M22,40 Q27,46 33,41" fill="none" stroke={eyeD} strokeWidth="3" strokeLinecap="round"/><path d="M53,41 Q59,46 64,40" fill="none" stroke={eyeD} strokeWidth="3" strokeLinecap="round"/></>}
+        {(s==='hypo'||s==='critical') && <><path d="M23,40 Q28,35 34,38" fill="none" stroke={eyeD} strokeWidth="2.5" strokeLinecap="round"/><path d="M52,38 Q58,35 63,40" fill="none" stroke={eyeD} strokeWidth="2.5" strokeLinecap="round"/></>}
+
+        {/* Mouth */}
+        {s==='ok' && <><path d="M29,67 Q43,79 57,67" fill="#D86060" stroke={eyeD} strokeWidth="2" strokeLinecap="round"/><path d="M30,68 Q43,72 56,68" fill={body} stroke="none"/></>}
+        {s==='caution' && <path d="M33,68 L53,68" fill="none" stroke={eyeD} strokeWidth="2" strokeLinecap="round"/>}
+        {s==='high' && <path d="M33,70 Q43,66 53,70" fill="none" stroke={eyeD} strokeWidth="2.2" strokeLinecap="round"/>}
+        {s==='vhigh' && <path d="M30,70 L35,66 L40,70 L45,66 L50,70 L55,66 L58,70" fill="none" stroke={eyeD} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>}
+        {s==='hypo' && <ellipse cx="43" cy="68" rx="7" ry="6" fill="#C05050" stroke={eyeD} strokeWidth="1"/>}
+        {s==='critical' && <ellipse cx="43" cy="68" rx="9" ry="8" fill="#C04040" stroke={eyeD} strokeWidth="1"/>}
+
+        {/* Sweat drops */}
+        {sweat && <ellipse cx="70" cy="48" rx="3" ry="4.5" fill="rgba(80,140,220,.72)" transform="rotate(22 70 48)"/>}
+        {sweat2 && <>
+          <ellipse cx="70" cy="48" rx="3" ry="4.5" fill="rgba(80,140,220,.72)" transform="rotate(22 70 48)"/>
+          <ellipse cx="16" cy="56" rx="2.5" ry="3.5" fill="rgba(80,140,220,.65)" transform="rotate(-18 16 56)"/>
+          <ellipse cx="73" cy="60" rx="2" ry="3" fill="rgba(80,140,220,.60)" transform="rotate(28 73 60)"/>
+        </>}
+      </svg>
+    </div>
+  );
+}
+
 function GlucoseWidget({reading, loading, onRefresh, activeDoses, tirStats, predictions}) {
   const {dark} = useContext(ThemeCtx);
   const [,tick] = useState(0);
@@ -1188,16 +1322,16 @@ function GlucoseWidget({reading, loading, onRefresh, activeDoses, tirStats, pred
             )}
           </div>
 
-          {/* Direita: IOB + carbos ativos, com codificação de risco */}
-          <div style={{flex:1,minWidth:0,textAlign:"left"}}>
+          {/* Direita: IOB + Pancri */}
+          <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column",alignItems:"center",gap:"6px"}}>
+            {/* IOB compacto */}
+            <div style={{width:"100%",textAlign:"left"}}>
             {totalIOB>0&&iobRem>0 ? (()=>{
-              // Risco: <1U cinza, 1-2U accent, >2U vermelho com pulso
               const iobColor = totalIOB < 1 ? "var(--text3)" : totalIOB < 2 ? "var(--accent)" : "var(--accent)";
               const iobBorder = totalIOB > 2 ? "1px solid rgba(13,148,136,.35)" : "none";
               const iobBg = totalIOB > 2 ? "var(--accent-muted)" : "transparent";
               return (<>
-                <div style={{background:iobBg,border:iobBorder,borderRadius:"7px",padding:totalIOB>2?"3px 5px":"0",
-                  display:"inline-block"}}>
+                <div style={{background:iobBg,border:iobBorder,borderRadius:"7px",padding:totalIOB>2?"3px 5px":"0",display:"inline-block"}}>
                   <div style={{fontSize:"12px",fontWeight:700,color:iobColor,fontFamily:"var(--mono)",display:"flex",alignItems:"center",gap:"4px"}}>
                     <IcoSyringe s={12} c={iobColor}/> {totalIOB}U
                   </div>
@@ -1223,6 +1357,9 @@ function GlucoseWidget({reading, loading, onRefresh, activeDoses, tirStats, pred
                 </div>
               )}
             </>)}
+            </div>
+            {/* Pancri */}
+            <PancriMascot glucose={reading?.glucose}/>
           </div>
         </div>
 
